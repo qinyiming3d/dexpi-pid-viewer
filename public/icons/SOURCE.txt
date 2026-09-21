@@ -1,0 +1,4 @@
+Lucide icons v0.468.0
+Source: https://github.com/lucide-icons/lucide/tree/0.468.0/icons
+License: ISC (see LICENSE)
+Downloaded with scripts/download-icons.mjs

@@ -1,0 +1,26 @@
+{
+  "name": "dexpi-pid-viewer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5178",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4178",
+    "test": "node --test tests/*.test.mjs",
+    "audit:corpus": "node scripts/audit-corpus.mjs",
+    "test:e2e": "playwright test",
+    "download:icons": "node scripts/download-icons.mjs",
+    "download:samples": "node scripts/download-samples.mjs"
+  },
+  "dependencies": {
+    "vue": "2.7.16",
+    "three": "0.180.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue2": "2.3.4",
+    "vite": "5.4.21",
+    "jsdom": "26.1.0",
+    "@playwright/test": "1.55.1"
+  }
+}
