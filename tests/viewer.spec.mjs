@@ -7,6 +7,51 @@ const referenceFile = fileURLToPath(new URL('../public/samples/C01V04-VER.EX01.x
 const browserErrors = new WeakMap()
 const trainingFile = relative => fileURLToPath(new URL('../../TrainingTestCases-master/' + relative, import.meta.url))
 
+test('C01 mirrored safety valve strokes match the reference SVG', async ({ page }) => {
+  const sample = fileURLToPath(new URL('../dexpi_data/dexpi 1.3/example pids/C01 DEXPI Reference P&ID/C01V04-VER.EX01', import.meta.url))
+  const svgSource = await readFile(`${sample}.svg`, 'utf8')
+  await page.locator('input[type="file"]').setInputFiles(`${sample}.xml`)
+  await expect(page.locator('.canvas-loading')).toHaveCount(0)
+  const readings = await page.evaluate(source => {
+    const { model, renderer } = document.querySelector('.app-shell').__vue__
+    const valve = model.nodes.find(node => node.xmlId === 'SpringLoadedGlobeSafetyValve-1')
+    const svg = new DOMParser().parseFromString(source, 'image/svg+xml').documentElement
+    svg.style.cssText = 'position:absolute; visibility:hidden; width:420px; height:297px'
+    document.body.append(svg)
+    const use = svg.querySelector('use[href="#symbol-9"]')
+    const matrix = use.getCTM()
+    const expected = [...svg.querySelectorAll('#symbol-9 path')].map(path => {
+      // The reference valve consists of M/L paths. Use the browser's SVG
+      // matrix, independently of the XML parser's reflection/rotation logic.
+      const values = path.getAttribute('d').match(/-?\d+(?:\.\d+)?/g).map(Number)
+      return Array.from({ length: values.length / 2 }, (_, i) => {
+        const point = new DOMPoint(values[2 * i], values[2 * i + 1]).matrixTransform(matrix)
+        return { x: point.x, y: svg.viewBox.baseVal.height - point.y }
+      })
+    })
+    svg.remove()
+    const actual = renderer.objects.filter(object => object.userData.nodeId === valve.id
+      && object.isLine2 && renderer.nodes.get(object.userData.primitive.sourceNodeId).isCatalogue)
+      .map(object => {
+        // Inspect the vertices actually sent to WebGL, not just parsed data.
+        const { instanceStart: start, instanceEnd: end } = object.geometry.attributes
+        const points = Array.from({ length: start.count }, (_, i) => ({ x: start.getX(i), y: start.getY(i) }))
+        points.push({ x: end.getX(end.count - 1), y: end.getY(end.count - 1) })
+        return points
+      })
+    return { actual, expected }
+  }, svgSource)
+  expect(readings.actual).toHaveLength(3)
+  expect(readings.expected).toHaveLength(3)
+  for (let i = 0; i < readings.expected.length; i++) {
+    expect(readings.actual[i]).toHaveLength(readings.expected[i].length)
+    for (let j = 0; j < readings.expected[i].length; j++) {
+      expect(readings.actual[i][j].x, `stroke ${i}, vertex ${j}: X`).toBeCloseTo(readings.expected[i][j].x, 4)
+      expect(readings.actual[i][j].y, `stroke ${i}, vertex ${j}: Y`).toBeCloseTo(readings.expected[i][j].y, 4)
+    }
+  }
+})
+
 test('C01 text baselines match the reference SVG, including rotated F.C.', async ({ page }) => {
   const sample = fileURLToPath(new URL('../dexpi_data/dexpi 1.3/example pids/C01 DEXPI Reference P&ID/C01V04-VER.EX01', import.meta.url))
   const svgSource = await readFile(`${sample}.svg`, 'utf8')

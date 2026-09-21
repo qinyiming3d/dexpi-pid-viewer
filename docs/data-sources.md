@@ -27,7 +27,7 @@ DEXPI/TestCases 归档没有提供独立的根目录 LICENSE 文件。本项目�
 - 保留 XML 的全部元素、原始父子层级、属性、文本与原始 ID；内部唯一 ID 不会覆盖重复的 XML ID。
 - 将 GenericAttribute 的值、单位、来源集合、格式、语言与 URI 提取为所属对象的工程属性。
 - 绘制 PolyLine / Line / CenterLine / Shape / Polygon / Circle / Ellipse / TrimmedCurve / Text。圆和椭圆离散成折线；椭圆弧按 Proteus 极角换算参数角。支持实体面填充，Hatch 只显示轮廓并给出提示。
-- 通过 ComponentName 解析 ShapeCatalogue，应用 Position / Reference / Scale 的平移、旋转、非均匀缩放与镜像。导出文件中对象自身的文字和坐标按绝对图纸坐标处理，避免重复变换。
+- 通过 ComponentName 解析 ShapeCatalogue，应用 Position / Axis / Reference / Scale 的平移、旋转、非均匀缩放与镜像。按 C01 参考 XML 与配套 SVG 的约定，负 Axis.Z 在旋转前镜像符号的局部 X 轴，并与 Scale 叠加；缺省 Axis 按正方向处理。导出文件中对象自身的文字和坐标按绝对图纸坐标处理，避免重复变换。
 - 保留文字和图形的原始图纸单位，米单位图纸不会被最小字号或最小画布尺寸放大、缩小。保留 Presentation 原色及线宽，使用 Text 指定的字体（未安装时由浏览器回退），支持文字对齐和常见虚线。线宽随缩放更新，缩小文字使用 mipmap 减少断笔。
 - 文字优先使用显式 String / Value；缺少显式文本时解析 DependantAttribute 中的属性占位符、ItemID 及 TextStringFormatSpecification。引用不存在时给出提示。
 - 提取 Connection 的 FromID / ToID / FromNode / ToNode；检查 Association 和 ObjectAttributesReference 是否能找到目标。开放管端可以只定义一端，不人为补全连接。

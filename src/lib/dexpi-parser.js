@@ -44,7 +44,11 @@ function matrixOf(element) {
   const reference = pointOf(position && direct(position, 'Reference')) || { x: 1, y: 0 }
   const angle = Math.atan2(reference.y, reference.x)
   const scale = direct(element, 'Scale')
-  const sx = numberAttr(scale, 'X', 1), sy = numberAttr(scale, 'Y', 1)
+  // The DEXPI reference exports use a negative Axis.Z to mirror local X
+  // before rotation (C01's safety valve and its companion SVG show this).
+  // Compose it with Scale so explicit negative scales still work.
+  const mirrorX = numberAttr(position && direct(position, 'Axis'), 'Z', 1) < 0 ? -1 : 1
+  const sx = numberAttr(scale, 'X', 1) * mirrorX, sy = numberAttr(scale, 'Y', 1)
   const c = Math.cos(angle), s = Math.sin(angle)
   return [c * sx, s * sx, -s * sy, c * sy, location.x, location.y]
 }
