@@ -89,9 +89,9 @@ test('text honours source fonts and em-box baselines, and preserves small height
     assert.notEqual(text.material, otherFont.material)
     assert.ok(otherFont.scale.x > text.scale.x)
     const rotated = renderer.createText({ ...primitive, rotation: Math.PI / 2, align: 'center', verticalAlign: 'middle' }, 'equipment')
-    const middleOffset = (-0.5 + (36 - 8) / (2 * 48)) * primitive.height
-    near(rotated.position.x, primitive.position.x - middleOffset)
-    near(rotated.position.y, primitive.position.y)
+    const inkOffset = (36 - 8) / (2 * 48) * primitive.height
+    near(rotated.position.x, primitive.position.x - inkOffset)
+    near(rotated.position.y, primitive.position.y - primitive.height / 2)
     near(rotated.rotation.z, Math.PI / 2)
     const inMm = renderer.createText({ ...primitive, height: 2, position: { x: 100, y: 200 } }, 'equipment')
     near(inMm.scale.x, text.scale.x * 1000)

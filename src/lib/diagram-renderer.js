@@ -285,18 +285,18 @@ export class DiagramRenderer {
     const vertical = String(primitive.verticalAlign || 'bottom').toLowerCase()
     const padding = cached.paddingRatio * height
     const offsetX = align === 'center' || align === 'middle' ? 0 : align === 'right' ? -width / 2 + padding : width / 2 - padding
-    // Proteus/SVG anchors the em box: Bottom uses the text baseline, Center
-    // offsets that baseline by half the font size, and Top by the full size.
-    // Centering actual glyph ink instead makes e.g. ESV labels float upwards.
+    // The companion SVGs apply vertical justification along the drawing Y
+    // axis, even for rotated text. Keep this baseline adjustment separate
+    // from the local glyph offsets so e.g. the 90-degree F.C. label aligns.
     const blockHeight = (1 + cached.extraLinesRatio) * height
     const baselineOffset = vertical === 'top' ? -height : vertical === 'middle' || vertical === 'center' ? blockHeight / 2 - height : blockHeight - height
-    const offsetY = baselineOffset + cached.inkCenterFromBaseline * height
+    const offsetY = cached.inkCenterFromBaseline * height
     const rotation = finite(primitive.rotation)
     const cos = Math.cos(rotation)
     const sin = Math.sin(rotation)
     const mesh = new THREE.Mesh(this.unitPlane, cached.material)
     mesh.scale.set(width, textHeight, 1)
-    mesh.position.set(Number(position.x) + offsetX * cos - offsetY * sin, Number(position.y) + offsetX * sin + offsetY * cos, 0.1)
+    mesh.position.set(Number(position.x) + offsetX * cos - offsetY * sin, Number(position.y) + baselineOffset + offsetX * sin + offsetY * cos, 0.1)
     mesh.rotation.z = rotation
     mesh.renderOrder = 2
     return mesh

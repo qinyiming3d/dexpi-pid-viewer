@@ -7,6 +7,57 @@ const referenceFile = fileURLToPath(new URL('../public/samples/C01V04-VER.EX01.x
 const browserErrors = new WeakMap()
 const trainingFile = relative => fileURLToPath(new URL('../../TrainingTestCases-master/' + relative, import.meta.url))
 
+test('C01 text baselines match the reference SVG, including rotated F.C.', async ({ page }) => {
+  const sample = fileURLToPath(new URL('../dexpi_data/dexpi 1.3/example pids/C01 DEXPI Reference P&ID/C01V04-VER.EX01', import.meta.url))
+  const svgSource = await readFile(`${sample}.svg`, 'utf8')
+  await page.locator('input[type="file"]').setInputFiles(`${sample}.xml`)
+  await expect(page.locator('.canvas-loading')).toHaveCount(0)
+  const result = await page.evaluate(source => {
+    const app = document.querySelector('.app-shell').__vue__
+    const r = app.renderer
+    const svg = new DOMParser().parseFromString(source, 'image/svg+xml').documentElement
+    svg.style.cssText = 'position:absolute; visibility:hidden; width:420px; height:297px'
+    document.body.append(svg)
+    // SVG x/y identify the alphabetic baseline. Let the browser apply the
+    // reference transforms, then convert its downward Y to drawing coordinates.
+    const references = [...svg.querySelectorAll('text')].map(element => {
+      const matrix = element.getCTM()
+      const point = new DOMPoint(+element.getAttribute('x'), +element.getAttribute('y')).matrixTransform(matrix)
+      return { text: element.textContent, x: point.x, y: svg.viewBox.baseVal.height - point.y,
+        angle: -Math.atan2(matrix.b, matrix.a) }
+    })
+    svg.remove()
+    const readings = r.objects.filter(object => object.userData.isText).map(object => {
+      const p = object.userData.primitive
+      const cached = [...r.textCache.values()].find(entry => entry.material === object.material)
+      // Undo the actual texture's ink-centre and horizontal-anchor offsets to
+      // recover the mesh baseline, independently of the XML alignment offset.
+      const edge = object.scale.x / 2 - cached.paddingRatio * p.height
+      const localX = p.align === 'left' ? -edge : p.align === 'right' ? edge : 0
+      const localY = -cached.inkCenterFromBaseline * p.height
+      const cos = Math.cos(object.rotation.z), sin = Math.sin(object.rotation.z)
+      const actual = { x: object.position.x + localX * cos - localY * sin,
+        y: object.position.y + localX * sin + localY * cos, angle: object.rotation.z }
+      const candidates = references.filter(reference => reference.text === p.text)
+      candidates.sort((a, b) => Math.hypot(a.x - actual.x, a.y - actual.y) - Math.hypot(b.x - actual.x, b.y - actual.y))
+      const expected = candidates[0]
+      if (expected) references.splice(references.indexOf(expected), 1)
+      return { text: p.text, actual, expected }
+    })
+    return { readings, remaining: references.length }
+  }, svgSource)
+  expect(result.readings).toHaveLength(245)
+  expect(result.remaining).toBe(0)
+  expect(result.readings.filter(reading => Math.abs(reading.expected.angle) > 1)).toHaveLength(13)
+  for (const { text, actual, expected } of result.readings) {
+    expect(expected, `${text} should have a reference SVG text`).toBeDefined()
+    expect(actual.x, `${text} baseline X`).toBeCloseTo(expected.x, 5)
+    expect(actual.y, `${text} baseline Y`).toBeCloseTo(expected.y, 5)
+    expect(actual.angle, `${text} rotation`).toBeCloseTo(expected.angle, 8)
+  }
+})
+
+
 test.beforeEach(async ({ page }) => {
   const errors = []
   browserErrors.set(page, errors)
