@@ -144,8 +144,10 @@ export class DiagramRenderer {
       if (!box.isEmpty()) {
         const bounds = { minX: box.min.x, minY: box.min.y, maxX: box.max.x, maxY: box.max.y }
         object.userData.bounds = bounds
-        if (!this.nodeBounds.has(primitive.nodeId)) this.nodeBounds.set(primitive.nodeId, emptyBounds())
-        mergeBounds(this.nodeBounds.get(primitive.nodeId), bounds)
+        for (const id of new Set([primitive.nodeId, primitive.sourceNodeId].filter(Boolean))) {
+          if (!this.nodeBounds.has(id)) this.nodeBounds.set(id, emptyBounds())
+          mergeBounds(this.nodeBounds.get(id), bounds)
+        }
       }
     }
     this.allBounds = emptyBounds()
@@ -326,8 +328,17 @@ export class DiagramRenderer {
     if (this.selectedId) {
       const ids = this.descendantIds(this.selectedId)
       for (const object of this.objects) {
-        if (!ids.has(object.userData.nodeId) || !object.visible || object.userData.isText) continue
-        if (object.isLine || object.isLine2) {
+        if ((!ids.has(object.userData.nodeId) && !ids.has(object.userData.primitive?.sourceNodeId)) || !object.visible) continue
+        if (object.userData.isText) {
+          // Render coloured glyphs rather than tinting the original texture:
+          // multiplying a black glyph by the selection colour stays black.
+          const highlight = this.createText({ ...object.userData.primitive, color: '#068fc0' }, object.userData.category)
+          if (!highlight) continue
+          highlight.position.z = 0.2
+          highlight.renderOrder = 3
+          highlight.userData = { sharedGeometry: true }
+          this.selection.add(highlight)
+        } else if (object.isLine || object.isLine2) {
           const highlight = object.clone()
           highlight.material = object.isLine2 ? object.material.clone() : this.selectionMaterial
           if (object.isLine2) {
@@ -484,6 +495,7 @@ export class DiagramRenderer {
   setLabels(visible) {
     this.labelsVisible = Boolean(visible)
     this.objects.forEach((object) => { object.visible = this.isVisible(object) })
+    this.select(this.selectedId)
     this.requestRender()
   }
 
@@ -513,7 +525,9 @@ export class DiagramRenderer {
       }
       return score(a) - score(b)
     })
-    return hits[0].object.userData.nodeId || null
+    const picked = hits[0].object.userData
+    const sourceId = picked.primitive?.sourceNodeId
+    return (picked.isText && !this.nodes.get(sourceId)?.isCatalogue && sourceId) || picked.nodeId || null
   }
 
   pointerDown(event) {

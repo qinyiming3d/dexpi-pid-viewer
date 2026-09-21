@@ -57,6 +57,51 @@ test('C01 text baselines match the reference SVG, including rotated F.C.', async
   }
 })
 
+test('Text nodes highlight from the XML tree and canvas, and follow label visibility', async ({ page }) => {
+  const target = await page.evaluate(() => {
+    const app = document.querySelector('.app-shell').__vue__
+    const r = app.renderer
+    const object = r.objects.find(o => o.userData.isText && !r.nodes.get(o.userData.primitive.sourceNodeId)?.isCatalogue)
+    return { id: object.userData.primitive.sourceNodeId, owner: object.userData.nodeId }
+  })
+  await page.getByRole('button', { name: 'XML 节点树', exact: true }).click()
+  await page.evaluate(id => document.querySelector('.app-shell').__vue__.revealNode(id), target.id)
+  await page.locator(`[data-node-id="${target.id}"]`).click()
+  const inspect = () => page.evaluate(() => {
+    const r = document.querySelector('.app-shell').__vue__.renderer
+    const meshes = r.selection.children.filter(o => o.isMesh && !o.isLine2)
+    return { count: meshes.length, bounds: r.selectionBounds, selected: r.selectedId,
+      hasBlueGlyphs: meshes.some(o => {
+        const c = o.material.map.image
+        const pixels = c.getContext('2d').getImageData(0, 0, c.width, c.height).data
+        for (let i = 0; i < pixels.length; i += 4) {
+          if (pixels[i + 3] > 200 && pixels[i] < 20 && pixels[i + 1] > 130 && pixels[i + 2] > 180) return true
+        }
+        return false
+      }) }
+  })
+  expect(await inspect()).toMatchObject({ count: 1, selected: target.id, hasBlueGlyphs: true })
+  expect((await inspect()).bounds).not.toBeNull()
+  await page.getByRole('button', { name: '切换文字', exact: true }).click()
+  expect((await inspect()).count).toBe(0)
+  await page.getByRole('button', { name: '切换文字', exact: true }).click()
+  expect((await inspect()).hasBlueGlyphs).toBe(true)
+  const point = await page.evaluate(id => {
+    const app = document.querySelector('.app-shell').__vue__
+    const r = app.renderer
+    r.focus(id)
+    const b = r.boundsFor(id)
+    app.selectNode(null)
+    return { x: r.width / 2 + ((b.minX + b.maxX) / 2 - r.center.x) * r.scale,
+      y: r.height / 2 - ((b.minY + b.maxY) / 2 - r.center.y) * r.scale }
+  }, target.id)
+  await page.locator('canvas.diagram-webgl-canvas').click({ position: point })
+  expect(await inspect()).toMatchObject({ selected: target.id, hasBlueGlyphs: true })
+  await page.evaluate(id => document.querySelector('.app-shell').__vue__.selectNode(id), target.owner)
+  expect((await inspect()).hasBlueGlyphs).toBe(true)
+  await page.evaluate(() => document.querySelector('.app-shell').__vue__.selectNode(null))
+  expect((await inspect()).count).toBe(0)
+})
 
 test.beforeEach(async ({ page }) => {
   const errors = []
