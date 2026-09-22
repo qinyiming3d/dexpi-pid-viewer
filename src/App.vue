@@ -885,9 +885,8 @@
 
 <script>
 import AppIcon from './components/AppIcon.vue'
-import { parseDexpi } from './lib/dexpi-parser.js'
+import { parseDexpiSource } from './parser/parse-dexpi.js'
 import { DiagramRenderer } from './lib/diagram-renderer.js'
-import Vue from 'vue'
 import { buildPidDocument } from './model/pid-document-builder.js'
 import {
   createTreeNodes,
@@ -920,6 +919,7 @@ export default {
   data() {
     return {
       model: null,
+      sourceRepository: null,
       documentData: null,
       worldInfo: [],
       nodeMap: Object.freeze({}),
@@ -1026,12 +1026,8 @@ export default {
       if (!this.selectedNode) {
         return ''
       }
-      if (this.model.getNodeXml) {
-        return this.model.getNodeXml(this.selectedNode.sourceNodeId || this.selectedId)
-      }
       return (
-        this.selectedNode.sourceXml ||
-        this.selectedNode.xml ||
+        this.sourceRepository?.getXml(this.selectedNode.sourceNodeId || this.selectedId) ||
         '<!-- 此节点未提供 XML 源码 -->'
       )
     },
@@ -1153,19 +1149,23 @@ export default {
     async applyXml(xml, fileName, sample = null) {
       await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
       const started = performance.now()
-      const parsed = parseDexpi(xml, {
+      const {
+        dto: parsed,
+        sourceRepository,
+      } = parseDexpiSource(xml, {
         fileName,
       })
       const elapsed = Math.round(performance.now() - started)
       if (!parsed.nodes.length) {
         throw new Error('XML 没有可读取的节点')
       }
-      // Freeze the parser model: Vue must not recursively observe tens of thousands of XML nodes.
-      this.model = Object.freeze(parsed)
       const data = buildPidDocument(parsed)
       // Build immutable import-time indexes outside computed watchers. Otherwise
       // Vue forwards every node dependency to the page on each viewport update.
       const nodeMap = createTreeNodes(data)
+      // Keep source DOM and bulk payloads outside Vue's recursive observation.
+      this.model = Object.freeze(parsed)
+      this.sourceRepository = Object.freeze(sourceRepository)
       this.treeViews = Object.freeze({
         model: createTree(data, nodeMap, 'model'),
         xml: createTree(data, nodeMap, 'xml'),

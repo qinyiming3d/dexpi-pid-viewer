@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "vue": "2.7.16",
-    "three": "0.180.0"
+    "three": "0.153.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue2": "2.3.4",

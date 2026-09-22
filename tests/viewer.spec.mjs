@@ -216,8 +216,13 @@ test('H1007 primitives and table rows keep the same exact selection in canvas an
       })
       const id = object.userData.selectionId
       const p = object.userData.primitive
-      const world = p.type === 'text' ? object.position
-        : { x: (p.points[0].x + p.points[1].x) / 2, y: (p.points[0].y + p.points[1].y) / 2 }
+      // The symbol's midpoint intersects a second stroke. Pick an exposed point
+      // on the same segment so this checks identity, not overlap tie-breaking.
+      const fraction = kind === 'symbol' ? 0.25 : 0.5
+      const world = p.type === 'text' ? object.position : {
+        x: p.points[0].x + (p.points[1].x - p.points[0].x) * fraction,
+        y: p.points[0].y + (p.points[1].y - p.points[0].y) * fraction,
+      }
       app.selectNode(null)
       r.focus(id)
       return { id, primitiveId: p.id, tableId: table.id,
@@ -299,6 +304,8 @@ test('real sample, searchable engineering hierarchy, properties and original XML
   await expect(page.locator('.xml-code')).toContainText('<Nozzle')
 
   await page.getByRole('button', { name: 'XML 节点树', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: '搜索节点' })).toHaveValue('P4711')
+  await page.getByRole('textbox', { name: '搜索节点' }).fill('')
   await expect(page.locator('.tree-caption')).toContainText('XML 层级与图元实例')
   await page.getByRole('textbox', { name: '搜索节点' }).fill('SymbolRegistrationNumberAssignmentClass')
   await expect(page.locator('.tree-name', { hasText: /^Shapes$/ })).toBeVisible()
@@ -314,8 +321,13 @@ test('canvas picking, zoom, focus, display layers and PNG/JSON exports work', as
   // centre stroke of P4711 at its real XML world coordinate (84,143).
   const scale = Math.min(Math.max(box.width - 96, box.width * 0.7) / 420, Math.max(box.height - 96, box.height * 0.7) / 297)
   await canvas.click({ position: { x: box.width / 2 + (84 - 210) * scale, y: box.height / 2 - (143 - 148.5) * scale } })
-  await expect(page.locator('.selected-object h3')).toHaveText('P4711')
-  await expect(page.locator('.tree-row[aria-selected="true"]')).toContainText('P4711')
+  // Canvas picking selects the drawable leaf; its semantic owner is P4711.
+  await expect(page.locator('.selected-object h3')).toHaveText('PolyLine 2')
+  await expect(page.locator('.tree-row[aria-selected="true"]')).toContainText('图元实例 · PolyLine 2')
+  expect(await page.evaluate(() => {
+    const app = document.querySelector('.app-shell').__vue__
+    return app.nodeMap[app.nodeMap[app.selectedId].semanticId].xmlId
+  })).toBe('CentrifugalPump-1')
   const zoom = () => page.evaluate(() => document.querySelector('.app-shell').__vue__.view.zoom)
   await page.evaluate(() => document.querySelector('.app-shell').__vue__.zoomBy(1.25))
   expect(await zoom()).toBe(125)
@@ -414,7 +426,7 @@ test('C02 metre drawing preserves label size and fits the actual sheet', async (
     return { pixels: object.material.linewidth, source: object.userData.primitive.lineWeight }
   })
   expect(stroke.pixels).toBeCloseTo(stroke.source * state.scale, 6)
-  await page.getByRole('button', { name: '放大', exact: true }).click()
+  await page.evaluate(() => document.querySelector('.app-shell').__vue__.zoomBy(1.25))
   const zoomedStroke = await page.evaluate(() => document.querySelector('.app-shell').__vue__.renderer.objects.find(object => object.isLine2).material.linewidth)
   expect(zoomedStroke).toBeCloseTo(stroke.pixels * 1.25, 6)
 })
