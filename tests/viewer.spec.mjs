@@ -224,6 +224,30 @@ test('catalogue valve backplates cover the process line', async ({ page }) => {
   expect(Math.max(...result.processOrders)).toBeLessThan(result.fill.renderOrder)
 })
 
+test('C03 filled symbol highlights when its face is clicked', async ({ page }) => {
+  await page.locator('input[type="file"]').setInputFiles(trainingFile('dexpi 1.3/example pids/C03 Piping (Equinor)/C03V04-VER.EX02.xml'))
+  await expect(page.locator('.document-title')).toContainText('C03V04-VER.EX02.xml')
+  await expect(page.locator('.canvas-loading')).toHaveCount(0)
+  const target = await page.evaluate(() => {
+    const { renderer } = document.querySelector('.app-shell').__vue__
+    const object = renderer.objects.find(object => object.userData.primitive.filled && object.userData.primitive.points?.length > 30 && object.isMesh && object.material.color.getHexString() === '000000')
+    const id = object.userData.selectionId
+    renderer.focus(id)
+    const bounds = object.userData.bounds
+    const rect = renderer.canvas.getBoundingClientRect()
+    return { id, x: rect.left + renderer.width / 2 + ((bounds.minX + bounds.maxX) / 2 - renderer.center.x) * renderer.scale,
+      y: rect.top + renderer.height / 2 - ((bounds.minY + bounds.maxY) / 2 - renderer.center.y) * renderer.scale }
+  })
+  await page.mouse.click(target.x, target.y)
+  const result = await page.evaluate(() => {
+    const { renderer } = document.querySelector('.app-shell').__vue__
+    const original = renderer.objects.find(object => object.userData.selectionId === renderer.selectedId)
+    const fill = renderer.selection.children.find(object => object.isMesh && !object.isLine2)
+    return { id: renderer.selectedId, color: fill?.material.color.getHexString(), originalColor: original?.material.color.getHexString() }
+  })
+  expect(result).toEqual({ id: target.id, color: '068fc0', originalColor: '000000' })
+})
+
 test('selected catalogue valve keeps its backplate above the highlighted X', async ({ page }) => {
   const result = await page.evaluate(() => {
     const app = document.querySelector('.app-shell').__vue__

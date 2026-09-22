@@ -611,10 +611,17 @@ export class DiagramRenderer {
           // highlighted catalogue strokes are drawn over the white circle and
           // reveal the X that the source symbol intentionally occludes.
           const highlight = object.clone()
+          const tintFill = object.userData.selectionId === this.selectedId ||
+            object.material.color.getHexString() !== 'ffffff'
+          if (tintFill) {
+            highlight.material = object.material.clone()
+            highlight.material.color.set('#068fc0')
+          }
           highlight.position.z = 0.2
           highlight.renderOrder = this.selectionRenderOrder(object)
           highlight.userData = {
             sharedGeometry: true,
+            ownsMaterial: tintFill,
           }
           this.selection.add(highlight)
         } else if (object.isLine || object.isLine2) {
