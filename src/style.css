@@ -782,27 +782,6 @@ kbd {
   background: #e5ebe2;
   margin: 0 5px;
 }
-.zoom-value {
-  font-family: Consolas, monospace;
-  font-size: 10px;
-  color: #687e65;
-  width: 44px;
-  white-space: nowrap;
-}
-.canvas-hint {
-  position: absolute;
-  right: 16px;
-  bottom: 60px;
-  display: flex;
-  gap: 5px;
-  align-items: center;
-  pointer-events: none;
-  font-size: 8px;
-  color: #b1bbac;
-}
-.canvas-hint > span {
-  padding: 0 1px;
-}
 .canvas-loading,
 .canvas-empty {
   position: absolute;
@@ -1568,9 +1547,6 @@ kbd {
     height: 57px;
     min-height: 57px;
   }
-  .canvas-hint {
-    bottom: 29px;
-  }
 }
 @media (max-width: 1250px) {
   .main-workspace {
@@ -1604,9 +1580,6 @@ kbd {
   }
   .panel-heading {
     padding: 0 13px;
-  }
-  .canvas-hint {
-    display: none;
   }
   .selected-object {
     padding-left: 13px;

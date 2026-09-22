@@ -316,14 +316,15 @@ test('canvas picking, zoom, focus, display layers and PNG/JSON exports work', as
   await canvas.click({ position: { x: box.width / 2 + (84 - 210) * scale, y: box.height / 2 - (143 - 148.5) * scale } })
   await expect(page.locator('.selected-object h3')).toHaveText('P4711')
   await expect(page.locator('.tree-row[aria-selected="true"]')).toContainText('P4711')
-  await page.getByRole('button', { name: '放大', exact: true }).click()
-  await expect(page.locator('.zoom-value')).toHaveText('125%')
-  await page.getByRole('button', { name: '缩小', exact: true }).click()
-  await expect(page.locator('.zoom-value')).toHaveText('100%')
+  const zoom = () => page.evaluate(() => document.querySelector('.app-shell').__vue__.view.zoom)
+  await page.evaluate(() => document.querySelector('.app-shell').__vue__.zoomBy(1.25))
+  expect(await zoom()).toBe(125)
+  await page.evaluate(() => document.querySelector('.app-shell').__vue__.zoomBy(0.8))
+  expect(await zoom()).toBe(100)
   await page.getByRole('button', { name: '在画布中定位' }).click()
-  await expect(page.locator('.zoom-value')).not.toHaveText('100%')
+  expect(await zoom()).not.toBe(100)
   await page.getByRole('button', { name: '适应画布', exact: true }).click()
-  await expect(page.locator('.zoom-value')).toHaveText('100%')
+  expect(await zoom()).toBe(100)
 
   await page.getByRole('button', { name: '切换网格', exact: true }).click()
   await expect(page.getByRole('button', { name: '切换网格', exact: true })).toHaveAttribute('aria-pressed', 'false')
@@ -430,4 +431,44 @@ test('E01 semantic-only XML exposes tank data and explains why the canvas is emp
   await expect(page.locator('.selected-object h3')).toHaveText('T4750')
   await expect(page.locator('.inspector-scroll')).toContainText('CylinderLength')
   await expect(page.locator('.toast.error')).toHaveCount(0)
+})
+
+test('viewport updates do not rerender the document tree; worldInfo stays reactive', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const app = document.querySelector('.app-shell').__vue__
+    const data = app.documentData
+    let updates = 0
+    const onUpdate = () => updates++
+    app.$on('hook:beforeUpdate', onUpdate)
+    const before = app.view.zoom
+    for (let i = 0; i < 10; i++) {
+      app.renderer.zoomBy(1.01)
+      await app.$nextTick()
+    }
+    const zoomUpdates = updates
+    app.$off('hook:beforeUpdate', onUpdate)
+    const root = data.worldInfo[0]
+    root.name = 'Reactive root check'
+    await app.$nextTick()
+    return {
+      zoomUpdates, zoomChanged: app.view.zoom !== before,
+      shared: app.worldInfo === data.worldInfo && root === data.getInfo(root.id),
+      observed: !!root.__ob__, payloadObserved: !!data.getNode(root.id).attributes.__ob__,
+      renamed: document.querySelector('[data-node-id="' + root.id + '"] .tree-name')?.textContent,
+      treeDeps: app._computedWatchers.treeData.deps.length,
+    }
+  })
+  expect(result).toMatchObject({ zoomUpdates: 0, zoomChanged: true, shared: true, observed: true, payloadObserved: false, renamed: 'Reactive root check' })
+  expect(result.treeDeps).toBeLessThan(10)
+})
+
+test('canvas toolbar omits the three zoom controls and keeps fit and display toggles', async ({ page }) => {
+  const toolbar = page.locator('.canvas-toolbar')
+  await expect(toolbar.getByRole('button', { name: '缩小', exact: true })).toHaveCount(0)
+  await expect(toolbar.getByRole('button', { name: '放大', exact: true })).toHaveCount(0)
+  await expect(toolbar.locator('.zoom-value')).toHaveCount(0)
+  await expect(toolbar.getByRole('button', { name: '缩放至全图' })).toBeVisible()
+  await expect(toolbar.getByRole('button', { name: '切换网格' })).toBeVisible()
+  await expect(toolbar.getByRole('button', { name: '切换文字' })).toBeVisible()
+  await expect(page.locator('.canvas-hint')).toHaveCount(0)
 })

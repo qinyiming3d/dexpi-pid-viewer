@@ -373,23 +373,6 @@
               <div class="canvas-toolbar">
                 <button
                   class="icon-button"
-                  title="缩小"
-                  aria-label="缩小"
-                  @click="zoomBy(0.8)"
-                >
-                  <app-icon name="minus" :size="17" /></button
-                ><button class="zoom-value" title="点击适应画布" @click="fit">
-                  {{ Math.round(view.zoom) }}%</button
-                ><button
-                  class="icon-button"
-                  title="放大"
-                  aria-label="放大"
-                  @click="zoomBy(1.25)"
-                >
-                  <app-icon name="plus" :size="17" /></button
-                ><i></i
-                ><button
-                  class="icon-button"
                   title="适应画布"
                   aria-label="缩放至全图"
                   @click="fit"
@@ -415,12 +398,6 @@
                 >
                   <app-icon name="type" :size="17" />
                 </button>
-              </div>
-              <div class="canvas-hint">
-                <app-icon
-                  name="mouse-pointer-2"
-                  :size="13"
-                />点击选择<span>·</span>拖动平移<span>·</span>滚轮缩放
               </div>
             </section>
 
@@ -907,55 +884,70 @@
 </template>
 
 <script>
-import AppIcon from "./components/AppIcon.vue";
-import { parseDexpi } from "./lib/dexpi-parser.js";
-import { DiagramRenderer } from "./lib/diagram-renderer.js";
-import { createSelectionNodes } from "./lib/primitive-selection.js";
+import AppIcon from './components/AppIcon.vue'
+import { parseDexpi } from './lib/dexpi-parser.js'
+import { DiagramRenderer } from './lib/diagram-renderer.js'
+import Vue from 'vue'
+import { buildPidDocument } from './model/pid-document-builder.js'
+import {
+  createTreeNodes,
+  createTree,
+  searchTree,
+  visibleTreeRows,
+} from './ui/tree/tree-projector.js'
 
 const CATEGORY_LABELS = {
-  equipment: "设备",
-  piping: "管道与管件",
-  instrumentation: "仪表",
-  drawing: "图纸与标注",
-  metadata: "元数据",
-  other: "模型节点",
-};
+  equipment: '设备',
+  piping: '管道与管件',
+  instrumentation: '仪表',
+  drawing: '图纸与标注',
+  metadata: '元数据',
+  other: '模型节点',
+}
 const CATEGORY_ICONS = {
-  equipment: "box",
-  piping: "git-branch",
-  instrumentation: "gauge",
-  drawing: "file",
-  metadata: "braces",
-  other: "folder",
-};
-const SEMANTIC_TAGS =
-  /^(PlantModel|Model|Drawing|Equipment|Nozzle|PipingNetworkSystem|PipingNetworkSegment|PipingComponent|ProcessInstrument|InstrumentationLoopFunction|ProcessInstrumentationFunction|Actuating.*|ProcessSignal.*|InformationFlow|InstrumentConnection|PlantArea|PlantInformation|MetaData|MetaInformation|Association|Component|PipeConnectorSymbol|SignalConnectorSymbol)$/;
+  equipment: 'box',
+  piping: 'git-branch',
+  instrumentation: 'gauge',
+  drawing: 'file',
+  metadata: 'braces',
+  other: 'folder',
+}
 
 export default {
-  components: { AppIcon },
+  components: {
+    AppIcon,
+  },
   data() {
     return {
       model: null,
+      documentData: null,
+      worldInfo: [],
       nodeMap: Object.freeze({}),
-      selectionNodes: Object.freeze([]),
-      fileName: "",
-      xmlText: "",
+      treeViews: Object.freeze({}),
+      fileName: '',
+      xmlText: '',
       samples: [],
       activeSample: null,
       loading: false,
       parseTime: 0,
       selectedId: null,
-      query: "",
-      treeMode: "model",
+      query: '',
+      treeMode: 'model',
       modelHidden: false,
       inspectorOpen: false,
       expanded: {},
-      leftPanel: "tree",
-      detailTab: "properties",
+      leftPanel: 'tree',
+      detailTab: 'properties',
       grid: true,
       labels: true,
-      view: { zoom: 100, center: { x: 0, y: 0 } },
-      canvasError: "",
+      view: {
+        zoom: 100,
+        center: {
+          x: 0,
+          y: 0,
+        },
+      },
+      canvasError: '',
       exportMenu: false,
       showSamples: false,
       showHelp: false,
@@ -972,147 +964,109 @@ export default {
         other: true,
       },
       layerOptions: [
-        { id: "equipment", label: "设备与喷嘴", icon: "box" },
-        { id: "piping", label: "管线与管件", icon: "git-branch" },
-        { id: "instrumentation", label: "仪表与信号", icon: "gauge" },
-        { id: "drawing", label: "图框与标注", icon: "file" },
-        { id: "metadata", label: "元数据图形", icon: "braces" },
-        { id: "other", label: "其他对象", icon: "layers" },
+        {
+          id: 'equipment',
+          label: '设备与喷嘴',
+          icon: 'box',
+        },
+        {
+          id: 'piping',
+          label: '管线与管件',
+          icon: 'git-branch',
+        },
+        {
+          id: 'instrumentation',
+          label: '仪表与信号',
+          icon: 'gauge',
+        },
+        {
+          id: 'drawing',
+          label: '图框与标注',
+          icon: 'file',
+        },
+        {
+          id: 'metadata',
+          label: '元数据图形',
+          icon: 'braces',
+        },
+        {
+          id: 'other',
+          label: '其他对象',
+          icon: 'layers',
+        },
       ],
-    };
+    }
   },
   computed: {
     stats() {
-      return this.model ? this.model.stats : {};
+      return this.model ? this.model.stats : {}
     },
     selectedNode() {
-      return this.nodeMap[this.selectedId] || null;
+      return this.nodeMap[this.selectedId] || null
     },
     selectedParent() {
-      return this.selectedNode
-        ? this.nodeMap[this.selectedNode.parentId]
-        : null;
+      return this.selectedNode ? this.nodeMap[this.selectedNode.parentId] : null
     },
     attributeCount() {
       return this.selectedNode
         ? Object.keys(this.selectedNode.attributes).length +
             this.selectedNode.properties.length
-        : 0;
+        : 0
     },
     selectedPath() {
-      const path = [];
-      let node = this.selectedNode;
+      const path = []
+      let node = this.selectedNode
       while (node) {
-        path.unshift(node);
-        node = this.nodeMap[node.parentId];
+        path.unshift(node)
+        node = this.nodeMap[node.parentId]
       }
-      return path;
+      return path
     },
     selectedXml() {
-      if (!this.selectedNode) return "";
-      if (this.model.getNodeXml)
-        return this.model.getNodeXml(this.selectedNode.sourceNodeId || this.selectedId);
+      if (!this.selectedNode) {
+        return ''
+      }
+      if (this.model.getNodeXml) {
+        return this.model.getNodeXml(this.selectedNode.sourceNodeId || this.selectedId)
+      }
       return (
         this.selectedNode.sourceXml ||
         this.selectedNode.xml ||
-        "<!-- 此节点未提供 XML 源码 -->"
-      );
+        '<!-- 此节点未提供 XML 源码 -->'
+      )
     },
     selectedConnections() {
-      if (!this.model || !this.selectedId) return [];
+      if (!this.model || !this.selectedId) {
+        return []
+      }
       return this.model.connections
         .filter((c) => c.from === this.selectedId || c.to === this.selectedId)
         .map((c) => ({
           ...c,
           target: c.from === this.selectedId ? c.to : c.from,
-          kind: c.type || c.kind || "连接引用",
-        }));
+          kind: c.type || c.kind || '连接引用',
+        }))
     },
     treeData() {
-      if (!this.model)
-        return { entries: [], children: {}, parents: {}, roots: [] };
-      const entries = [],
-        children = {},
-        parents = {},
-        included = new Set(),
-        catalogue = new Set();
-      const drawnSources = new Set(this.model.primitives.map(p => p.sourceNodeId));
-      for (const node of this.selectionNodes) {
-        if (node.tag === "ShapeCatalogue" || catalogue.has(node.parentId))
-          catalogue.add(node.id);
-        if (
-          this.treeMode === "xml" ||
-          (!catalogue.has(node.id) &&
-            (node.id === this.model.rootId ||
-              SEMANTIC_TAGS.test(node.tag) ||
-              node.tag === "Label" || drawnSources.has(node.id) || node.isPrimitiveInstance ||
-              (node.xmlId &&
-                ["equipment", "piping", "instrumentation"].includes(
-                  node.category,
-                ))))
-        ) {
-          entries.push(node);
-          included.add(node.id);
+      return (
+        this.treeViews[this.treeMode] || {
+          entries: [],
+          children: {},
+          parents: {},
+          roots: [],
         }
-      }
-      const roots = [];
-      for (const node of entries) {
-        let p = node.parentId;
-        while (p && !included.has(p)) p = this.nodeMap[p]?.parentId;
-        parents[node.id] = p || null;
-        if (p) (children[p] || (children[p] = [])).push(node.id);
-        else roots.push(node.id);
-      }
-      return { entries, children, parents, roots };
+      )
     },
     searchMatches() {
-      if (!this.query.trim()) return null;
-      const q = this.query.trim().toLowerCase();
-      const matches = new Set();
-      for (const node of this.treeData.entries) {
-        if (
-          (
-            node.label +
-            " " +
-            node.xmlId +
-            " " +
-            node.tag +
-            " " +
-            Object.values(node.attributes).join(" ")
-          )
-            .toLowerCase()
-            .includes(q)
-        ) {
-          let id = node.id;
-          while (id && !matches.has(id)) {
-            matches.add(id);
-            id = this.treeData.parents[id];
-          }
-        }
-      }
-      return matches;
+      return searchTree(this.treeData, this.query)
     },
     visibleRows() {
-      const rows = [];
-      const { children, roots } = this.treeData;
-      const visit = (id, depth) => {
-        if (
-          rows.length >= 1000 ||
-          (this.searchMatches && !this.searchMatches.has(id))
-        )
-          return;
-        const list = children[id] || [];
-        rows.push({
-          node: this.nodeMap[id],
-          depth,
-          hasChildren: !!list.length,
-          childCount: list.length,
-        });
-        if (this.isExpanded(id))
-          list.forEach((child) => visit(child, depth + 1));
-      };
-      roots.forEach((id) => visit(id, 0));
-      return rows;
+      return visibleTreeRows(
+        this.treeData,
+        this.nodeMap,
+        this.searchMatches,
+        this.expanded
+      )
     },
   },
   async mounted() {
@@ -1120,242 +1074,294 @@ export default {
       this.renderer = new DiagramRenderer(this.$refs.canvas, {
         onSelect: (id) => this.selectNode(id),
         onViewChange: (state) => {
-          this.view = state;
+          this.view.zoom = state.zoom
+          this.view.center = state.center
         },
         onError: (message) => {
-          this.canvasError = String(message);
+          this.canvasError = String(message)
         },
-      });
+      })
     } catch (error) {
-      this.canvasError = error.message;
+      this.canvasError = error.message
     }
-    window.addEventListener("keydown", this.onKeydown);
+    window.addEventListener('keydown', this.onKeydown)
     try {
-      const response = await fetch("/samples/manifest.json");
-      if (!response.ok) throw new Error("无法加载示例文件清单");
-      this.samples = await response.json();
-      if (this.samples.length) await this.loadSample(this.samples[0]);
+      const response = await fetch('/samples/manifest.json')
+      if (!response.ok) {
+        throw new Error('无法加载示例文件清单')
+      }
+      this.samples = await response.json()
+      if (this.samples.length) {
+        await this.loadSample(this.samples[0])
+      }
     } catch (error) {
-      this.notify(error.message, "error");
+      this.notify(error.message, 'error')
     }
   },
   beforeDestroy() {
-    window.removeEventListener("keydown", this.onKeydown);
-    this.renderer?.dispose();
-    clearTimeout(this.toastTimer);
+    window.removeEventListener('keydown', this.onKeydown)
+    this.renderer?.dispose()
+    clearTimeout(this.toastTimer)
   },
   methods: {
     categoryLabel(category) {
-      return CATEGORY_LABELS[category] || "模型节点";
+      return CATEGORY_LABELS[category] || '模型节点'
     },
     nodeIcon(node) {
       return node.id === this.model?.rootId
-        ? "database"
-        : CATEGORY_ICONS[node.category] || "folder";
+        ? 'database'
+        : CATEGORY_ICONS[node.category] || 'folder'
     },
     treeLabel(node) {
-      if (node.isPrimitiveInstance) return "图元实例 · " + node.label;
-      return node.tag === "Text" ? "Text · " + node.label : node.label || node.tag;
+      if (node.isPrimitiveInstance) {
+        return '图元实例 · ' + node.label
+      }
+      return node.tag === 'Text' ? 'Text · ' + node.label : node.label || node.tag
     },
-    notify(message, type = "success") {
-      clearTimeout(this.toastTimer);
-      this.toast = { message, type };
+    notify(message, type = 'success') {
+      clearTimeout(this.toastTimer)
+      this.toast = {
+        message,
+        type,
+      }
       this.toastTimer = setTimeout(
         () => (this.toast = null),
-        type === "error" ? 9000 : 3500,
-      );
+        type === 'error' ? 9000 : 3500
+      )
     },
     closeModals() {
-      this.showSamples = false;
-      this.showHelp = false;
-      this.showAbout = false;
-      this.showWarnings = false;
+      this.showSamples = false
+      this.showHelp = false
+      this.showAbout = false
+      this.showWarnings = false
     },
     async loadSample(sample) {
-      this.closeModals();
-      this.loading = true;
+      this.closeModals()
+      this.loading = true
       try {
-        const response = await fetch(
-          "/samples/" + encodeURIComponent(sample.file),
-        );
-        if (!response.ok) throw new Error("示例文件加载失败");
-        await this.applyXml(await response.text(), sample.file, sample);
+        const response = await fetch('/samples/' + encodeURIComponent(sample.file))
+        if (!response.ok) {
+          throw new Error('示例文件加载失败')
+        }
+        await this.applyXml(await response.text(), sample.file, sample)
       } catch (error) {
-        this.notify(error.message, "error");
+        this.notify(error.message, 'error')
       } finally {
-        this.loading = false;
+        this.loading = false
       }
     },
     async applyXml(xml, fileName, sample = null) {
-      await new Promise((resolve) =>
-        requestAnimationFrame(() => setTimeout(resolve, 0)),
-      );
-      const started = performance.now();
-      const parsed = parseDexpi(xml, { fileName });
-      const elapsed = Math.round(performance.now() - started);
-      if (!parsed.nodes.length) throw new Error("XML 没有可读取的节点");
+      await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
+      const started = performance.now()
+      const parsed = parseDexpi(xml, {
+        fileName,
+      })
+      const elapsed = Math.round(performance.now() - started)
+      if (!parsed.nodes.length) {
+        throw new Error('XML 没有可读取的节点')
+      }
       // Freeze the parser model: Vue must not recursively observe tens of thousands of XML nodes.
-      this.model = Object.freeze(parsed);
-      this.selectionNodes = Object.freeze(createSelectionNodes(parsed));
-      this.nodeMap = Object.freeze(
-        Object.fromEntries(this.selectionNodes.map((n) => [n.id, n])),
-      );
-      this.fileName = fileName;
-      this.xmlText = xml;
-      this.activeSample = sample;
-      this.parseTime = elapsed;
-      this.selectedId = null;
-      this.query = "";
-      this.expanded = { [parsed.rootId]: true };
-      this.detailTab = "properties";
-      for (const id of parsed.nodes.find((n) => n.id === parsed.rootId)
-        ?.childIds || []) {
-        const n = this.nodeMap[id];
-        if (n && /^(PlantArea|PipingNetworkSystem|Drawing)$/.test(n.tag))
-          this.$set(this.expanded, id, true);
+      this.model = Object.freeze(parsed)
+      const data = buildPidDocument(parsed)
+      // Build immutable import-time indexes outside computed watchers. Otherwise
+      // Vue forwards every node dependency to the page on each viewport update.
+      const nodeMap = createTreeNodes(data)
+      this.treeViews = Object.freeze({
+        model: createTree(data, nodeMap, 'model'),
+        xml: createTree(data, nodeMap, 'xml'),
+      })
+      this.nodeMap = nodeMap
+      this.documentData = Object.freeze(data)
+      // Vue observes only this lightweight tree; Map payloads stay unobserved.
+      this.worldInfo = data.worldInfo
+      this.fileName = fileName
+      this.xmlText = xml
+      this.activeSample = sample
+      this.parseTime = elapsed
+      this.selectedId = null
+      this.query = ''
+      this.expanded = {
+        [parsed.rootId]: true,
+      }
+      this.detailTab = 'properties'
+      for (const id of parsed.nodes.find((n) => n.id === parsed.rootId)?.childIds || []) {
+        const n = this.nodeMap[id]
+        if (n && /^(PlantArea|PipingNetworkSystem|Drawing)$/.test(n.tag)) {
+          this.$set(this.expanded, id, true)
+        }
       }
       if (this.renderer) {
         try {
-          this.renderer.setModel(parsed);
-          this.renderer.setLayers(this.layers);
-          this.renderer.setGrid(this.grid);
-          this.renderer.setLabels(this.labels);
-          this.canvasError = "";
+          this.renderer.setModel(parsed)
+          this.renderer.setLayers(this.layers)
+          this.renderer.setGrid(this.grid)
+          this.renderer.setLabels(this.labels)
+          this.canvasError = ''
         } catch (error) {
-          this.canvasError = error.message;
-          this.notify("XML 已解析，图形渲染失败：" + error.message, "error");
+          this.canvasError = error.message
+          this.notify('XML 已解析，图形渲染失败：' + error.message, 'error')
         }
       }
       this.notify(
-        "已解析 " +
+        '已解析 ' +
           parsed.nodes.length.toLocaleString() +
-          " 个节点与 " +
+          ' 个节点与 ' +
           parsed.primitives.length.toLocaleString() +
-          " 个图形",
-      );
+          ' 个图形'
+      )
     },
     async readFile(file) {
-      if (!file) return;
-      if (file.size > 30 * 1024 * 1024) {
-        this.notify("文件超过 30 MB，请选择较小的 XML 文件。", "error");
-        return;
+      if (!file) {
+        return
       }
-      this.loading = true;
+      if (file.size > 30 * 1024 * 1024) {
+        this.notify('文件超过 30 MB，请选择较小的 XML 文件。', 'error')
+        return
+      }
+      this.loading = true
       try {
-        const buffer = await file.arrayBuffer();
-        let text = new TextDecoder("utf-8").decode(buffer);
-        const encoding = text
-          .slice(0, 180)
-          .match(/encoding\s*=\s*["']([^"']+)/i)?.[1];
+        const buffer = await file.arrayBuffer()
+        let text = new TextDecoder('utf-8').decode(buffer)
+        const encoding = text.slice(0, 180).match(/encoding\s*=\s*["']([^"']+)/i)?.[1]
         if (encoding && !/^utf-?8$/i.test(encoding)) {
           try {
-            text = new TextDecoder(encoding).decode(buffer);
+            text = new TextDecoder(encoding).decode(buffer)
           } catch {
-            throw new Error("无法读取文件编码：" + encoding);
+            throw new Error('无法读取文件编码：' + encoding)
           }
         }
-        await this.applyXml(text, file.name);
+        await this.applyXml(text, file.name)
       } catch (error) {
-        this.notify("导入失败：" + error.message, "error");
+        this.notify('导入失败：' + error.message, 'error')
       } finally {
-        this.loading = false;
+        this.loading = false
       }
     },
     onFileChange(event) {
-      this.readFile(event.target.files[0]);
-      event.target.value = "";
+      this.readFile(event.target.files[0])
+      event.target.value = ''
     },
     onDrop(event) {
-      this.dragging = false;
-      this.readFile(event.dataTransfer.files[0]);
+      this.dragging = false
+      this.readFile(event.dataTransfer.files[0])
     },
     onDragLeave(event) {
-      if (!event.relatedTarget || !this.$el.contains(event.relatedTarget))
-        this.dragging = false;
+      if (!event.relatedTarget || !this.$el.contains(event.relatedTarget)) {
+        this.dragging = false
+      }
     },
     isExpanded(id) {
-      return !!this.searchMatches || !!this.expanded[id];
+      return !!this.searchMatches || !!this.expanded[id]
     },
     toggleNode(id) {
-      if (this.expanded[id]) this.$delete(this.expanded, id);
-      else this.$set(this.expanded, id, true);
+      if (this.expanded[id]) {
+        this.$delete(this.expanded, id)
+      } else {
+        this.$set(this.expanded, id, true)
+      }
     },
     expandNode(id) {
-      this.$set(this.expanded, id, true);
+      this.$set(this.expanded, id, true)
     },
     collapseTree() {
-      this.expanded = {};
+      this.expanded = {}
     },
     changeTreeMode(mode) {
-      this.treeMode = mode;
-      this.expanded = { [this.model?.rootId]: true };
-      if (this.selectedId) this.revealNode(this.selectedId);
+      this.treeMode = mode
+      this.expanded = {
+        [this.model?.rootId]: true,
+      }
+      if (this.selectedId) {
+        this.revealNode(this.selectedId)
+      }
     },
     revealNode(id) {
-      let p = this.treeData.parents[id];
+      let p = this.treeData.parents[id]
       while (p) {
-        this.$set(this.expanded, p, true);
-        p = this.treeData.parents[p];
+        this.$set(this.expanded, p, true)
+        p = this.treeData.parents[p]
       }
     },
     selectNode(id) {
-      if (id && !this.nodeMap[id]) return;
-      this.selectedId = id;
-      this.renderer?.select(id);
+      if (id && !this.nodeMap[id]) {
+        return
+      }
+      this.selectedId = id
+      this.renderer?.select(id)
       if (id) {
-        if (this.searchMatches && !this.searchMatches.has(id)) this.query = "";
-        if (window.innerWidth <= 1100) this.inspectorOpen = true;
-        this.revealNode(id);
+        if (this.searchMatches && !this.searchMatches.has(id)) {
+          this.query = ''
+        }
+        if (window.innerWidth <= 1100) {
+          this.inspectorOpen = true
+        }
+        this.revealNode(id)
         this.$nextTick(() => {
-          const el = this.$el.querySelector(
-            '[data-node-id="' + CSS.escape(id) + '"]',
-          );
-          el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-        });
+          const el = this.$el.querySelector('[data-node-id="' + CSS.escape(id) + '"]')
+          el?.scrollIntoView({
+            block: 'nearest',
+            behavior: 'smooth',
+          })
+        })
       }
     },
     selectFirstEquipment() {
       const node = this.model?.nodes.find(
         (n) =>
-          n.tag === "Equipment" && n.xmlId && this.treeData.entries.includes(n),
-      );
-      if (node) this.selectNode(node.id);
+          n.tag === 'Equipment' &&
+          n.xmlId &&
+          this.treeData.entries.some((entry) => entry.id === n.id)
+      )
+      if (node) {
+        this.selectNode(node.id)
+      }
     },
     focusNode(id) {
-      if (!id) return;
-      const result = this.renderer?.focus(id);
-      if (result === false) this.notify("此节点没有可定位的图形。", "error");
+      if (!id) {
+        return
+      }
+      const result = this.renderer?.focus(id)
+      if (result === false) {
+        this.notify('此节点没有可定位的图形。', 'error')
+      }
     },
     fit() {
-      this.renderer?.fit();
+      this.renderer?.fit()
     },
     zoomBy(factor) {
-      this.renderer?.zoomBy(factor);
+      this.renderer?.zoomBy(factor)
     },
     toggleGrid() {
-      this.grid = !this.grid;
-      this.renderer?.setGrid(this.grid);
+      this.grid = !this.grid
+      this.renderer?.setGrid(this.grid)
     },
     toggleLabels() {
-      this.labels = !this.labels;
-      this.renderer?.setLabels(this.labels);
+      this.labels = !this.labels
+      this.renderer?.setLabels(this.labels)
     },
     toggleLayer(id) {
-      this.$set(this.layers, id, !this.layers[id]);
-      this.renderer?.setLayers(this.layers);
+      this.$set(this.layers, id, !this.layers[id])
+      this.renderer?.setLayers(this.layers)
     },
     download(data, name, type) {
-      const blob = data instanceof Blob ? data : new Blob([data], { type });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = name;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      this.exportMenu = false;
+      const blob =
+        data instanceof Blob
+          ? data
+          : new Blob([data], {
+              type,
+            })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = name
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      this.exportMenu = false
     },
     exportJson() {
-      if (!this.model) return;
+      if (!this.model) {
+        return
+      }
       const {
         name,
         version,
@@ -1367,7 +1373,7 @@ export default {
         bounds,
         stats,
         warnings,
-      } = this.model;
+      } = this.model
       this.download(
         JSON.stringify(
           {
@@ -1383,64 +1389,70 @@ export default {
             warnings,
           },
           null,
-          2,
+          2
         ),
-        this.fileName.replace(/\.[^.]+$/, "") + ".json",
-        "application/json",
-      );
+        this.fileName.replace(/\.[^.]+$/, '') + '.json',
+        'application/json'
+      )
     },
     exportXml() {
-      this.download(this.xmlText, this.fileName, "application/xml");
+      this.download(this.xmlText, this.fileName, 'application/xml')
     },
     exportPng() {
       try {
-        const url = this.renderer?.exportPng();
-        if (!url) throw new Error("画布不可用");
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = this.fileName.replace(/\.[^.]+$/, "") + ".png";
-        link.click();
-        this.exportMenu = false;
-        this.notify("当前画布已导出为 PNG");
+        const url = this.renderer?.exportPng()
+        if (!url) {
+          throw new Error('画布不可用')
+        }
+        const link = document.createElement('a')
+        link.href = url
+        link.download = this.fileName.replace(/\.[^.]+$/, '') + '.png'
+        link.click()
+        this.exportMenu = false
+        this.notify('当前画布已导出为 PNG')
       } catch (error) {
-        this.notify(error.message, "error");
+        this.notify(error.message, 'error')
       }
     },
     async copyText(text) {
       try {
-        await navigator.clipboard.writeText(text);
-        this.notify("已复制到剪贴板");
+        await navigator.clipboard.writeText(text)
+        this.notify('已复制到剪贴板')
       } catch {
-        this.notify("无法访问剪贴板，请手动选择复制。", "error");
+        this.notify('无法访问剪贴板，请手动选择复制。', 'error')
       }
     },
     onKeydown(event) {
-      if (event.key === "Escape") {
-        this.closeModals();
-        this.exportMenu = false;
-        this.selectNode(null);
-        return;
+      if (event.key === 'Escape') {
+        this.closeModals()
+        this.exportMenu = false
+        this.selectNode(null)
+        return
       }
       if (
         /INPUT|TEXTAREA|SELECT/.test(event.target.tagName) ||
         event.ctrlKey ||
         event.metaKey ||
         event.altKey
-      )
-        return;
-      if (event.key === "/") {
-        event.preventDefault();
-        this.leftPanel = "tree";
-        this.$nextTick(() => this.$refs.searchInput?.focus());
-      } else if (event.key.toLowerCase() === "f") {
-        event.preventDefault();
-        this.focusNode(this.selectedId);
-      } else if (event.key === "Home") {
-        event.preventDefault();
-        this.fit();
-      } else if (event.key === "+" || event.key === "=") this.zoomBy(1.25);
-      else if (event.key === "-") this.zoomBy(0.8);
+      ) {
+        return
+      }
+      if (event.key === '/') {
+        event.preventDefault()
+        this.leftPanel = 'tree'
+        this.$nextTick(() => this.$refs.searchInput?.focus())
+      } else if (event.key.toLowerCase() === 'f') {
+        event.preventDefault()
+        this.focusNode(this.selectedId)
+      } else if (event.key === 'Home') {
+        event.preventDefault()
+        this.fit()
+      } else if (event.key === '+' || event.key === '=') {
+        this.zoomBy(1.25)
+      } else if (event.key === '-') {
+        this.zoomBy(0.8)
+      }
     },
   },
-};
+}
 </script>

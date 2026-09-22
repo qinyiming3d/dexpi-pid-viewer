@@ -13,10 +13,16 @@
 <script>
 export default {
   props: {
-    name: { type: String, required: true },
-    size: { type: Number, default: 18 },
+    name: {
+      type: String,
+      required: true,
+    },
+    size: {
+      type: Number,
+      default: 18,
+    },
   },
-};
+}
 </script>
 <style>
 .app-icon {
