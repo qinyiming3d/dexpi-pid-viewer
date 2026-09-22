@@ -669,22 +669,6 @@ kbd {
   font-weight: 550;
   color: #5e7963;
 }
-.dot {
-  height: 5px;
-  width: 5px;
-  display: inline-block;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.dot.equipment {
-  background: #629e85;
-}
-.dot.piping {
-  background: #7b96b8;
-}
-.dot.instrumentation {
-  background: #c8a767;
-}
 .canvas-panel {
   position: relative;
   min-width: 0;
@@ -772,21 +756,6 @@ kbd {
   height: 4px;
   border-radius: 50%;
   background: #80a680;
-}
-.canvas-legend {
-  position: absolute;
-  bottom: 55px;
-  left: 18px;
-  display: flex;
-  gap: 13px;
-  font-size: 8px;
-  color: #94a28d;
-  pointer-events: none;
-}
-.canvas-legend > span {
-  display: flex;
-  align-items: center;
-  gap: 4px;
 }
 .canvas-toolbar {
   position: absolute;
@@ -1599,9 +1568,6 @@ kbd {
     height: 57px;
     min-height: 57px;
   }
-  .canvas-legend {
-    bottom: 27px;
-  }
   .canvas-hint {
     bottom: 29px;
   }
@@ -1867,9 +1833,6 @@ kbd {
   }
   .local-badge {
     font-size: 8px;
-  }
-  .canvas-legend {
-    bottom: 61px;
   }
   .toast {
     font-size: 10px;

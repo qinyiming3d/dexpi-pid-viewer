@@ -264,13 +264,13 @@
                 </div>
                 <div class="model-summary">
                   <span
-                    ><i class="dot equipment"></i>设备
+                    >设备
                     <b>{{ stats.equipment || 0 }}</b></span
                   ><span
-                    ><i class="dot piping"></i>管道
+                    >管道
                     <b>{{ stats.piping || 0 }}</b></span
                   ><span
-                    ><i class="dot instrumentation"></i>仪表
+                    >仪表
                     <b>{{ stats.instrumentation || 0 }}</b></span
                   >
                 </div>
@@ -369,11 +369,6 @@
                     "可在左侧查看设备与属性。绘图还需要 XML 中的图形坐标和符号定义；具体原因请查看底部解析提示。"
                   }}
                 </p>
-              </div>
-              <div v-if="model && !loading" class="canvas-legend">
-                <span><i class="dot equipment"></i>设备</span
-                ><span><i class="dot piping"></i>管线</span
-                ><span><i class="dot instrumentation"></i>仪表</span>
               </div>
               <div class="canvas-toolbar">
                 <button
