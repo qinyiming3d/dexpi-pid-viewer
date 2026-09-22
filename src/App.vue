@@ -499,20 +499,22 @@
                           <app-icon name="copy" :size="13" />
                         </button>
                       </div>
-                      <dl class="properties-list">
-                        <div>
-                          <dt>对象 ID</dt>
-                          <dd class="mono">
+                      <table class="properties-table" aria-label="标识信息">
+                        <thead><tr><th scope="col">属性</th><th scope="col">属性值</th></tr></thead>
+                        <tbody>
+                        <tr>
+                          <th scope="row">对象 ID</th>
+                          <td class="mono">
                             {{ selectedNode.xmlId || selectedNode.id }}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>XML 类型</dt>
-                          <dd class="mono">{{ selectedNode.tag }}</dd>
-                        </div>
-                        <div v-if="selectedParent">
-                          <dt>父级节点</dt>
-                          <dd>
+                          </td>
+                        </tr>
+                        <tr>
+                          <th scope="row">XML 类型</th>
+                          <td class="mono">{{ selectedNode.tag }}</td>
+                        </tr>
+                        <tr v-if="selectedParent">
+                          <th scope="row">父级节点</th>
+                          <td>
                             <button
                               class="property-link"
                               @click="selectNode(selectedParent.id)"
@@ -520,13 +522,14 @@
                               {{ selectedParent.label || selectedParent.tag
                               }}<app-icon name="arrow-up-right" :size="12" />
                             </button>
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>直接子节点</dt>
-                          <dd>{{ selectedNode.childIds.length }}</dd>
-                        </div>
-                      </dl>
+                          </td>
+                        </tr>
+                        <tr>
+                          <th scope="row">直接子节点</th>
+                          <td>{{ selectedNode.childIds.length }}</td>
+                        </tr>
+                      </tbody>
+                      </table>
                     </div>
                     <div class="detail-section">
                       <div class="section-title">
@@ -534,15 +537,18 @@
                           Object.keys(selectedNode.attributes).length
                         }}</span>
                       </div>
-                      <dl class="properties-list stacked">
-                        <div
+                      <table class="properties-table" aria-label="XML 属性">
+                        <thead><tr><th scope="col">属性</th><th scope="col">属性值</th></tr></thead>
+                        <tbody>
+                        <tr
                           v-for="(value, key) in selectedNode.attributes"
                           :key="key"
                         >
-                          <dt>{{ key }}</dt>
-                          <dd>{{ value || "—" }}</dd>
-                        </div>
-                      </dl>
+                          <th scope="row">{{ key }}</th>
+                          <td>{{ value || "—" }}</td>
+                        </tr>
+                      </tbody>
+                      </table>
                       <p
                         v-if="!Object.keys(selectedNode.attributes).length"
                         class="muted-note"
@@ -559,20 +565,23 @@
                           selectedNode.properties.length
                         }}</span>
                       </div>
-                      <dl class="properties-list stacked">
-                        <div
+                      <table class="properties-table" aria-label="工程属性">
+                        <thead><tr><th scope="col">属性</th><th scope="col">属性值</th></tr></thead>
+                        <tbody>
+                        <tr
                           v-for="(property, index) in selectedNode.properties"
                           :key="index"
                         >
-                          <dt :title="property.source">{{ property.name }}</dt>
-                          <dd>
+                          <th scope="row" :title="property.source">{{ property.name }}</th>
+                          <td>
                             {{ property.value || "—" }}
                             <span class="property-unit">{{
                               property.unit
                             }}</span>
-                          </dd>
-                        </div>
-                      </dl>
+                          </td>
+                        </tr>
+                      </tbody>
+                      </table>
                     </div>
                     <div v-if="selectedNode.text" class="detail-section">
                       <div class="section-title">文本内容</div>
