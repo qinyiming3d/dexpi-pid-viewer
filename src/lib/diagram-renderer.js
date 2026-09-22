@@ -220,12 +220,16 @@ export class DiagramRenderer {
     const points = this.pointsFor(primitive)
     if (points.length < 2) return null
     const closed = primitive.closed || ['polygon', 'circle', 'ellipse'].includes(primitive.type)
+    const catalogueOrder = primitive.isCatalogueGeometry ? 1.5 + finite(primitive.catalogueOrder) * 1e-4 : 1.5
     if (closed && primitive.filled && points.length >= 3) {
       const shape = new THREE.Shape(points.map((point) => new THREE.Vector2(point.x, point.y)))
       const key = `fill:${this.colorOf(primitive, category)}`
-      if (!this.materials.has(key)) this.materials.set(key, new THREE.MeshBasicMaterial({ color: this.colorOf(primitive, category), side: THREE.DoubleSide, depthTest: false }))
+      // Filled catalogue geometry is a white backplate in the reference SVG.
+      // Keep it in the transparent render list so it can be ordered after the
+      // process line and before the catalogue outline.
+      if (!this.materials.has(key)) this.materials.set(key, new THREE.MeshBasicMaterial({ color: this.colorOf(primitive, category), side: THREE.DoubleSide, depthTest: false, depthWrite: false, transparent: true, opacity: 1, toneMapped: false }))
       const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), this.materials.get(key))
-      mesh.renderOrder = 1
+      mesh.renderOrder = catalogueOrder
       return mesh
     }
     const material = this.lineMaterial(primitive, category)
@@ -233,7 +237,10 @@ export class DiagramRenderer {
     const geometry = new LineGeometry().setPositions(points.flatMap(point => [point.x, point.y, point.z]))
     const line = new Line2(geometry, material)
     if (material.dashed) line.computeLineDistances()
-    line.renderOrder = category === 'drawing' ? 0 : 1
+    // Preserve the source catalogue order: a symbol's backplate must cover
+    // earlier strokes (such as the X in a ball valve), while its border stays
+    // visible when it is drawn later. Ordinary process lines remain behind it.
+    line.renderOrder = primitive.isCatalogueGeometry ? catalogueOrder : category === 'drawing' ? 0 : 1
     return line
   }
 
@@ -322,6 +329,11 @@ export class DiagramRenderer {
     return validBounds(bounds) ? bounds : null
   }
 
+  selectionRenderOrder(object) {
+    const primitive = object.userData?.primitive
+    return primitive?.isCatalogueGeometry ? 3 + finite(primitive.catalogueOrder) * 1e-4 : 3
+  }
+
   select(nodeId, { focus = false } = {}) {
     this.selectedId = nodeId || null
     this.clearSelection()
@@ -338,6 +350,15 @@ export class DiagramRenderer {
           highlight.renderOrder = 3
           highlight.userData = { sharedGeometry: true }
           this.selection.add(highlight)
+        } else if (object.userData.primitive?.filled && object.isMesh) {
+          // Keep the symbol's backplate in the selection layer. Otherwise the
+          // highlighted catalogue strokes are drawn over the white circle and
+          // reveal the X that the source symbol intentionally occludes.
+          const highlight = object.clone()
+          highlight.position.z = 0.2
+          highlight.renderOrder = this.selectionRenderOrder(object)
+          highlight.userData = { sharedGeometry: true }
+          this.selection.add(highlight)
         } else if (object.isLine || object.isLine2) {
           const highlight = object.clone()
           highlight.material = object.isLine2 ? object.material.clone() : this.selectionMaterial
@@ -347,7 +368,7 @@ export class DiagramRenderer {
             highlight.material.linewidth = Math.max(object.material.linewidth, 1.5)
           }
           highlight.position.z = 0.2
-          highlight.renderOrder = 3
+          highlight.renderOrder = this.selectionRenderOrder(object)
           highlight.userData = { sharedGeometry: true, ownsMaterial: Boolean(object.isLine2) }
           this.selection.add(highlight)
         }

@@ -206,9 +206,10 @@ export function parseDexpi(xml, { fileName = '未命名.xml' } = {}) {
     primitive.id = 'p' + primitives.length
     primitives.push(primitive)
   }
-  function renderGeometry(element, nodeId, matrix) {
+  let catalogueGeometryOrder = 0
+  function renderGeometry(element, nodeId, matrix, { isCatalogueGeometry = false } = {}) {
     const tag = tagOf(element)
-    const common = { nodeId, sourceNodeId: elementToNode.get(element)?.id, ...styleOf(element, defaultLineWeight) }
+    const common = { nodeId, sourceNodeId: elementToNode.get(element)?.id, isCatalogueGeometry, catalogueOrder: isCatalogueGeometry ? catalogueGeometryOrder++ : null, ...styleOf(element, defaultLineWeight) }
     if (['PolyLine', 'Polyline', 'Line', 'CenterLine', 'Shape', 'Polygon'].includes(tag)) {
       let points = childrenOf(element).filter(child => ['Coordinate', 'Point'].includes(tagOf(child))).map(pointOf).filter(Boolean)
       if (!points.length && tag === 'Line') {
@@ -292,7 +293,7 @@ export function parseDexpi(xml, { fileName = '未命名.xml' } = {}) {
     while (todo.length) {
       const element = todo.pop(), tag = tagOf(element)
       if (IGNORE_DRAWING.has(tag)) continue
-      if (GEOMETRY.has(tag)) { renderGeometry(element, nodeId, matrix); continue }
+      if (GEOMETRY.has(tag)) { renderGeometry(element, nodeId, matrix, { isCatalogueGeometry: true }); continue }
       const reference = attr(element, 'ComponentName')
       if (reference && catalogue.has(reference)) renderCatalogue(catalogue.get(reference), element, nodeId, matrix, nextSeen)
       todo.push(...childrenOf(element).reverse())

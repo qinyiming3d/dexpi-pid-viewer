@@ -148,6 +148,51 @@ test('Text nodes highlight from the XML tree and canvas, and follow label visibi
   expect((await inspect()).count).toBe(0)
 })
 
+test('catalogue valve backplates cover the process line', async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const app = document.querySelector('.app-shell').__vue__
+    const r = app.renderer
+    const valve = r.nodes.get([...r.nodes.values()].find(node => node.xmlId === 'BallValve-4')?.id)
+    const objects = r.objects.filter(object => object.userData.nodeId === valve?.id)
+    const fill = objects.find(object => object.userData.primitive.filled && object.userData.primitive.isCatalogueGeometry)
+    const outlines = objects.filter(object => object.userData.primitive.isCatalogueGeometry && !object.userData.primitive.filled && object.userData.primitive.type === 'polyline')
+    const segment = [...r.nodes.values()].find(node => node.xmlId === 'PipingNetworkSegment-14')
+    const processLines = r.objects.filter(object => object.userData.nodeId === segment?.id && object.userData.primitive.type === 'polyline')
+    return {
+      fill: fill && { renderOrder: fill.renderOrder, transparent: fill.material.transparent, color: fill.material.color.getHexString() },
+      outlineOrders: outlines.map(object => object.renderOrder),
+      processOrders: processLines.map(object => object.renderOrder),
+    }
+  })
+  expect(result.fill.transparent).toBe(true)
+  expect(result.fill.color).toBe('ffffff')
+  expect(result.fill.renderOrder).toBeGreaterThan(1.5)
+  expect(result.fill.renderOrder).toBeLessThan(2)
+  expect(result.outlineOrders.length).toBeGreaterThan(0)
+  expect(Math.min(...result.outlineOrders)).toBeLessThan(result.fill.renderOrder)
+  expect(Math.max(...result.outlineOrders)).toBeGreaterThan(result.fill.renderOrder)
+  expect(result.processOrders.length).toBeGreaterThan(0)
+  expect(Math.max(...result.processOrders)).toBeLessThan(result.fill.renderOrder)
+})
+
+test('selected catalogue valve keeps its backplate above the highlighted X', async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const app = document.querySelector('.app-shell').__vue__
+    const r = app.renderer
+    const valve = [...r.nodes.values()].find(node => node.xmlId === 'BallValve-4')
+    app.selectNode(valve.id)
+    const meshes = r.selection.children.filter(object => object.isMesh && !object.isLine2)
+    const lines = r.selection.children.filter(object => object.isLine2)
+    const fill = meshes.find(object => !object.material.map && object.material.color.getHexString() === 'ffffff')
+    return { selected: r.selectedId, fill: fill && { renderOrder: fill.renderOrder, color: fill.material.color.getHexString() }, lineOrders: lines.map(object => object.renderOrder) }
+  })
+  expect(result.selected).toBeTruthy()
+  expect(result.fill).toEqual(expect.objectContaining({ color: 'ffffff' }))
+  expect(result.lineOrders.length).toBe(2)
+  expect(Math.min(...result.lineOrders)).toBeLessThan(result.fill.renderOrder)
+  expect(Math.max(...result.lineOrders)).toBeGreaterThan(result.fill.renderOrder)
+})
+
 test.beforeEach(async ({ page }) => {
   const errors = []
   browserErrors.set(page, errors)

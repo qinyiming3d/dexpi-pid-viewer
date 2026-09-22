@@ -54,6 +54,7 @@ test('catalogue coordinates rotate, scale and translate; instance labels remain 
   const line = model.primitives.find(p => p.type === 'polyline')
   near(line.points[0].x, 10); near(line.points[0].y, 20)
   near(line.points[1].x, 10); near(line.points[1].y, 24)
+  assert.equal(line.isCatalogueGeometry, true)
   assert.equal(line.nodeId, pump.id)
   const text = model.primitives.find(p => p.type === 'text')
   assert.deepEqual(text.position, { x: 30, y: 40 })

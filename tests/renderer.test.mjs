@@ -59,6 +59,21 @@ test('dashed closed shapes include the closing edge in line distances', () => {
   near(distances.getX(2), 12)
 })
 
+test('filled catalogue shapes render as backplates between process lines and outlines', () => {
+  const renderer = rendererWithoutCanvas()
+  const points = [{ x: -1, y: -1 }, { x: 1, y: -1 }, { x: 1, y: 1 }, { x: -1, y: 1 }]
+  const earlierStroke = renderer.createShape({ type: 'polyline', isCatalogueGeometry: true, catalogueOrder: 0, points: [{ x: -1, y: 0 }, { x: 1, y: 0 }] }, 'piping')
+  const backplate = renderer.createShape({ type: 'polygon', closed: true, filled: true, color: '#ffffff', isCatalogueGeometry: true, catalogueOrder: 1, points }, 'piping')
+  const processLine = renderer.createShape({ type: 'polyline', points: [{ x: -2, y: 0 }, { x: 2, y: 0 }] }, 'piping')
+  const catalogueOutline = renderer.createShape({ type: 'polyline', isCatalogueGeometry: true, catalogueOrder: 2, points: [{ x: -1, y: 0 }, { x: 1, y: 0 }] }, 'piping')
+  assert.equal(backplate.material.transparent, true)
+  assert.equal(backplate.material.depthWrite, false)
+  assert.ok(earlierStroke.renderOrder < backplate.renderOrder)
+  assert.ok(backplate.renderOrder < catalogueOutline.renderOrder)
+  assert.equal(processLine.renderOrder, 1)
+  assert.ok(backplate.renderOrder < catalogueOutline.renderOrder)
+})
+
 test('text honours source fonts and em-box baselines, and preserves small heights', () => {
   const previousDocument = globalThis.document
   const contexts = []
