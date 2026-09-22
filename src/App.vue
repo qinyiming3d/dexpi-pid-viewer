@@ -187,7 +187,7 @@
                       ? "搜索结果"
                       : treeMode === "model"
                         ? "工程对象层级"
-                        : "完整 XML 层级"
+                        : "XML 层级与图元实例"
                   }}</span
                   ><span
                     >{{ treeData.entries.length.toLocaleString() }} 节点</span
@@ -244,7 +244,7 @@
                     /><span
                       class="tree-name"
                       :title="row.node.label + ' · ' + row.node.tag"
-                      >{{ row.node.label || row.node.tag }}</span
+                      >{{ treeLabel(row.node) }}</span
                     ><span v-if="row.hasChildren" class="tree-count">{{
                       row.childCount
                     }}</span
@@ -910,6 +910,7 @@
 import AppIcon from "./components/AppIcon.vue";
 import { parseDexpi } from "./lib/dexpi-parser.js";
 import { DiagramRenderer } from "./lib/diagram-renderer.js";
+import { createSelectionNodes } from "./lib/primitive-selection.js";
 
 const CATEGORY_LABELS = {
   equipment: "设备",
@@ -936,6 +937,7 @@ export default {
     return {
       model: null,
       nodeMap: Object.freeze({}),
+      selectionNodes: Object.freeze([]),
       fileName: "",
       xmlText: "",
       samples: [],
@@ -1008,7 +1010,8 @@ export default {
     },
     selectedXml() {
       if (!this.selectedNode) return "";
-      if (this.model.getNodeXml) return this.model.getNodeXml(this.selectedId);
+      if (this.model.getNodeXml)
+        return this.model.getNodeXml(this.selectedNode.sourceNodeId || this.selectedId);
       return (
         this.selectedNode.sourceXml ||
         this.selectedNode.xml ||
@@ -1033,7 +1036,8 @@ export default {
         parents = {},
         included = new Set(),
         catalogue = new Set();
-      for (const node of this.model.nodes) {
+      const drawnSources = new Set(this.model.primitives.map(p => p.sourceNodeId));
+      for (const node of this.selectionNodes) {
         if (node.tag === "ShapeCatalogue" || catalogue.has(node.parentId))
           catalogue.add(node.id);
         if (
@@ -1041,6 +1045,7 @@ export default {
           (!catalogue.has(node.id) &&
             (node.id === this.model.rootId ||
               SEMANTIC_TAGS.test(node.tag) ||
+              node.tag === "Label" || drawnSources.has(node.id) || node.isPrimitiveInstance ||
               (node.xmlId &&
                 ["equipment", "piping", "instrumentation"].includes(
                   node.category,
@@ -1148,6 +1153,10 @@ export default {
         ? "database"
         : CATEGORY_ICONS[node.category] || "folder";
     },
+    treeLabel(node) {
+      if (node.isPrimitiveInstance) return "图元实例 · " + node.label;
+      return node.tag === "Text" ? "Text · " + node.label : node.label || node.tag;
+    },
     notify(message, type = "success") {
       clearTimeout(this.toastTimer);
       this.toast = { message, type };
@@ -1187,8 +1196,9 @@ export default {
       if (!parsed.nodes.length) throw new Error("XML 没有可读取的节点");
       // Freeze the parser model: Vue must not recursively observe tens of thousands of XML nodes.
       this.model = Object.freeze(parsed);
+      this.selectionNodes = Object.freeze(createSelectionNodes(parsed));
       this.nodeMap = Object.freeze(
-        Object.fromEntries(parsed.nodes.map((n) => [n.id, n])),
+        Object.fromEntries(this.selectionNodes.map((n) => [n.id, n])),
       );
       this.fileName = fileName;
       this.xmlText = xml;
@@ -1293,6 +1303,7 @@ export default {
       this.selectedId = id;
       this.renderer?.select(id);
       if (id) {
+        if (this.searchMatches && !this.searchMatches.has(id)) this.query = "";
         if (window.innerWidth <= 1100) this.inspectorOpen = true;
         this.revealNode(id);
         this.$nextTick(() => {

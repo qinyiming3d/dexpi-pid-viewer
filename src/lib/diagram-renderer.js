@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { Line2 } from 'three/addons/lines/Line2.js'
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js'
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js'
+import { createSelectionNodes, primitiveSelectionId } from './primitive-selection.js'
 
 const CATEGORY_COLORS = {
   equipment: '#3c596b',
@@ -123,7 +124,7 @@ export class DiagramRenderer {
   setModel(model) {
     this.clearModel()
     this.model = model
-    this.nodes = new Map((model?.nodes || []).map((node) => [node.id, node]))
+    this.nodes = new Map(createSelectionNodes(model).map((node) => [node.id, node]))
     this.children = new Map()
     this.nodes.forEach((node) => {
       if (node.parentId) {
@@ -135,7 +136,7 @@ export class DiagramRenderer {
       const category = this.categoryOf(primitive.nodeId)
       const object = primitive.type === 'text' ? this.createText(primitive, category) : this.createShape(primitive, category)
       if (!object) continue
-      object.userData = { nodeId: primitive.nodeId, category, primitive, isText: primitive.type === 'text' }
+      object.userData = { nodeId: primitive.nodeId, category, primitive, isText: primitive.type === 'text', selectionId: primitiveSelectionId(primitive) }
       object.visible = this.isVisible(object)
       this.diagram.add(object)
       this.objects.push(object)
@@ -144,7 +145,7 @@ export class DiagramRenderer {
       if (!box.isEmpty()) {
         const bounds = { minX: box.min.x, minY: box.min.y, maxX: box.max.x, maxY: box.max.y }
         object.userData.bounds = bounds
-        for (const id of new Set([primitive.nodeId, primitive.sourceNodeId].filter(Boolean))) {
+        for (const id of new Set([primitive.nodeId, primitive.sourceNodeId, primitive.instanceNodeId].filter(Boolean))) {
           if (!this.nodeBounds.has(id)) this.nodeBounds.set(id, emptyBounds())
           mergeBounds(this.nodeBounds.get(id), bounds)
         }
@@ -323,9 +324,20 @@ export class DiagramRenderer {
     return ids
   }
 
+  objectsForSelection(nodeId) {
+    // A canvas pick targets the exact drawable leaf. Parent selections from
+    // either tree consistently include their descendants, including tables.
+    if (this.objects.some(object => object.userData.selectionId === nodeId)) {
+      return this.objects.filter(object => object.visible && object.userData.selectionId === nodeId)
+    }
+    const ids = this.descendantIds(nodeId)
+    return this.objects.filter(object => object.visible && [object.userData.selectionId, object.userData.nodeId,
+      object.userData.primitive?.sourceNodeId, object.userData.primitive?.instanceNodeId].some(id => ids.has(id)))
+  }
+
   boundsFor(nodeId) {
     const bounds = emptyBounds()
-    this.descendantIds(nodeId).forEach((id) => mergeBounds(bounds, this.nodeBounds.get(id)))
+    this.objectsForSelection(nodeId).forEach(object => mergeBounds(bounds, object.userData.bounds))
     return validBounds(bounds) ? bounds : null
   }
 
@@ -338,9 +350,7 @@ export class DiagramRenderer {
     this.selectedId = nodeId || null
     this.clearSelection()
     if (this.selectedId) {
-      const ids = this.descendantIds(this.selectedId)
-      for (const object of this.objects) {
-        if ((!ids.has(object.userData.nodeId) && !ids.has(object.userData.primitive?.sourceNodeId)) || !object.visible) continue
+      for (const object of this.objectsForSelection(this.selectedId)) {
         if (object.userData.isText) {
           // Render coloured glyphs rather than tinting the original texture:
           // multiplying a black glyph by the selection colour stays black.
@@ -546,9 +556,7 @@ export class DiagramRenderer {
       }
       return score(a) - score(b)
     })
-    const picked = hits[0].object.userData
-    const sourceId = picked.primitive?.sourceNodeId
-    return (picked.isText && !this.nodes.get(sourceId)?.isCatalogue && sourceId) || picked.nodeId || null
+    return hits[0].object.userData.selectionId || null
   }
 
   pointerDown(event) {

@@ -193,6 +193,74 @@ test('selected catalogue valve keeps its backplate above the highlighted X', asy
   expect(Math.max(...result.lineOrders)).toBeGreaterThan(result.fill.renderOrder)
 })
 
+test('H1007 primitives and table rows keep the same exact selection in canvas and both trees', async ({ page }, testInfo) => {
+  const inspect = () => page.evaluate(() => {
+    const app = document.querySelector('.app-shell').__vue__
+    const r = app.renderer
+    return { selected: app.selectedId, bounds: r.selectionBounds,
+      primitiveIds: r.objectsForSelection(r.selectedId).map(o => o.userData.primitive.id),
+      highlightCount: r.selection.children.filter(o => o !== r.selectionBox).length }
+  })
+  const clickPrimitive = async kind => {
+    const target = await page.evaluate(kind => {
+      const app = document.querySelector('.app-shell').__vue__
+      const r = app.renderer
+      const equipment = app.model.nodes.find(n => n.xmlId === 'PlateHeatExchanger-1')
+      const table = app.model.nodes.find(n => n.xmlId === 'EquipmentBarLabel-1')
+      const tableIds = r.descendantIds(table.id)
+      const object = r.objects.find(o => {
+        const p = o.userData.primitive
+        if (kind === 'symbol') return p.nodeId === equipment.id && p.isCatalogueGeometry && p.type === 'polyline' && p.points.length === 2
+        if (kind === 'table-line') return tableIds.has(p.sourceNodeId) && p.type === 'polyline' && p.points.every(point => point.y === 60.5)
+        return p.type === 'text' && p.text === 'H1007' && (kind === 'table-text' ? p.position.y < 100 : p.position.y > 100)
+      })
+      const id = object.userData.selectionId
+      const p = object.userData.primitive
+      const world = p.type === 'text' ? object.position
+        : { x: (p.points[0].x + p.points[1].x) / 2, y: (p.points[0].y + p.points[1].y) / 2 }
+      app.selectNode(null)
+      r.focus(id)
+      return { id, primitiveId: p.id, tableId: table.id,
+        point: { x: r.width / 2 + (world.x - r.center.x) * r.scale,
+          y: r.height / 2 - (world.y - r.center.y) * r.scale } }
+    }, kind)
+    await page.locator('canvas.diagram-webgl-canvas').click({ position: target.point })
+    return target
+  }
+  for (const kind of ['symbol', 'tag', 'table-line', 'table-text']) {
+    const target = await clickPrimitive(kind)
+    const state = await inspect()
+    expect(state).toMatchObject({ selected: target.id, primitiveIds: [target.primitiveId], highlightCount: 1 })
+    const currentRow = page.locator('[data-node-id="' + target.id + '"]')
+    await expect(currentRow).toHaveAttribute('aria-selected', 'true')
+    await currentRow.click()
+    expect(await inspect()).toEqual(state)
+    if (kind.startsWith('table')) await expect(page.locator('[data-node-id="' + target.tableId + '"]')).toBeVisible()
+    if (kind === 'symbol') {
+      await page.locator('.inspector-tabs').getByRole('button', { name: 'XML', exact: true }).click()
+      await expect(page.locator('.xml-code')).toContainText('<PolyLine')
+    }
+  }
+  const textState = await inspect()
+  await page.getByRole('button', { name: 'XML 节点树', exact: true }).click()
+  await page.locator('[data-node-id="' + textState.selected + '"]').click()
+  expect(await inspect()).toEqual(textState)
+  await page.getByRole('button', { name: '结构模型', exact: true }).click()
+  await page.locator('[data-node-id="' + textState.selected + '"]').click()
+  expect(await inspect()).toEqual(textState)
+  await page.getByRole('button', { name: '定位选中对象', exact: true }).click()
+  expect(await inspect()).toEqual(textState)
+  await page.getByRole('button', { name: '切换文字', exact: true }).click()
+  expect(await inspect()).toMatchObject({ selected: textState.selected, bounds: null, highlightCount: 0 })
+  await page.getByRole('button', { name: '切换文字', exact: true }).click()
+  expect(await inspect()).toEqual(textState)
+  await page.evaluate(() => document.querySelector('.app-shell').__vue__.renderer.setLayers({ equipment: false }))
+  expect((await inspect()).bounds).toBeNull()
+  await page.evaluate(() => document.querySelector('.app-shell').__vue__.renderer.setLayers({ equipment: true }))
+  expect(await inspect()).toEqual(textState)
+  await page.screenshot({ path: testInfo.outputPath('h1007-precise-table-text.png') })
+})
+
 test.beforeEach(async ({ page }) => {
   const errors = []
   browserErrors.set(page, errors)
@@ -231,7 +299,7 @@ test('real sample, searchable engineering hierarchy, properties and original XML
   await expect(page.locator('.xml-code')).toContainText('<Nozzle')
 
   await page.getByRole('button', { name: 'XML 节点树', exact: true }).click()
-  await expect(page.locator('.tree-caption')).toContainText('5,216 节点')
+  await expect(page.locator('.tree-caption')).toContainText('XML 层级与图元实例')
   await page.getByRole('textbox', { name: '搜索节点' }).fill('SymbolRegistrationNumberAssignmentClass')
   await expect(page.locator('.tree-name', { hasText: /^Shapes$/ })).toBeVisible()
   await expect(page.locator('.tree-name', { hasText: /^SymbolRegistrationNumberAssignmentClass$/ }).first()).toBeVisible()

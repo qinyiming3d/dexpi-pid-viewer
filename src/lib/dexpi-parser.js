@@ -207,9 +207,9 @@ export function parseDexpi(xml, { fileName = '未命名.xml' } = {}) {
     primitives.push(primitive)
   }
   let catalogueGeometryOrder = 0
-  function renderGeometry(element, nodeId, matrix, { isCatalogueGeometry = false } = {}) {
+  function renderGeometry(element, nodeId, matrix, { isCatalogueGeometry = false, instanceNodeId } = {}) {
     const tag = tagOf(element)
-    const common = { nodeId, sourceNodeId: elementToNode.get(element)?.id, isCatalogueGeometry, catalogueOrder: isCatalogueGeometry ? catalogueGeometryOrder++ : null, ...styleOf(element, defaultLineWeight) }
+    const common = { nodeId, sourceNodeId: elementToNode.get(element)?.id, instanceNodeId, isCatalogueGeometry, catalogueOrder: isCatalogueGeometry ? catalogueGeometryOrder++ : null, ...styleOf(element, defaultLineWeight) }
     if (['PolyLine', 'Polyline', 'Line', 'CenterLine', 'Shape', 'Polygon'].includes(tag)) {
       let points = childrenOf(element).filter(child => ['Coordinate', 'Point'].includes(tagOf(child))).map(pointOf).filter(Boolean)
       if (!points.length && tag === 'Line') {
@@ -285,7 +285,7 @@ export function parseDexpi(xml, { fileName = '未命名.xml' } = {}) {
       append({ ...common, type: 'text', text, position: transform(position, matrix), height: transformedHeight, rotation: Math.atan2(dy, dx), align, verticalAlign, font: attr(element, 'Font') })
     }
   }
-  function renderCatalogue(definition, instance, nodeId, base = IDENTITY, seen = new Set()) {
+  function renderCatalogue(definition, instance, nodeId, base = IDENTITY, seen = new Set(), instanceNodeId = elementToNode.get(instance)?.id) {
     if (seen.has(definition)) { warn('发现循环的 ShapeCatalogue 引用，已停止展开。'); return }
     const nextSeen = new Set(seen); nextSeen.add(definition)
     const matrix = multiply(base, multiply(matrixOf(instance), inverse(matrixOf(definition))))
@@ -293,9 +293,9 @@ export function parseDexpi(xml, { fileName = '未命名.xml' } = {}) {
     while (todo.length) {
       const element = todo.pop(), tag = tagOf(element)
       if (IGNORE_DRAWING.has(tag)) continue
-      if (GEOMETRY.has(tag)) { renderGeometry(element, nodeId, matrix, { isCatalogueGeometry: true }); continue }
+      if (GEOMETRY.has(tag)) { renderGeometry(element, nodeId, matrix, { isCatalogueGeometry: true, instanceNodeId }); continue }
       const reference = attr(element, 'ComponentName')
-      if (reference && catalogue.has(reference)) renderCatalogue(catalogue.get(reference), element, nodeId, matrix, nextSeen)
+      if (reference && catalogue.has(reference)) renderCatalogue(catalogue.get(reference), element, nodeId, matrix, nextSeen, instanceNodeId)
       todo.push(...childrenOf(element).reverse())
     }
   }
