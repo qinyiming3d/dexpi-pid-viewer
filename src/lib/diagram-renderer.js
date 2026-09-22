@@ -12,6 +12,7 @@ const CATEGORY_COLORS = {
   metadata: '#81909b',
   other: '#526573',
 }
+const MIN_LINE_WIDTH = 0.5
 const finite = (value, fallback = 0) =>
   Number.isFinite(Number(value)) ? Number(value) : fallback
 const isPoint = (point) =>
@@ -286,10 +287,11 @@ export class DiagramRenderer {
       // preserves Proteus LineWeight in drawing units, including metre sheets.
       // Convert width to pixels using the orthographic scale. Keeping the
       // shader in screen units avoids precision loss for sub-millimetre lines
-      // viewed by a camera thousands of drawing units away.
+      // viewed by a camera thousands of drawing units away. Keep hairlines
+      // visible at sheet scale without changing source weights or dash lengths.
       const material = new LineMaterial({
         color,
-        linewidth: weight * (this.scale || 1),
+        linewidth: Math.max(MIN_LINE_WIDTH, weight * (this.scale || 1)),
         worldUnits: false,
         dashed,
         dashSize,
@@ -401,7 +403,9 @@ export class DiagramRenderer {
   }
 
   createText(primitive, category) {
-    const text = String(primitive.text ?? '').trimEnd()
+    // XML character references preserve CR (&#xD;), used for line breaks by
+    // the DEXPI 1.2 HEX exporter. Canvas otherwise draws those labels on one line.
+    const text = String(primitive.text ?? '').replace(/\r\n?/g, '\n').trimEnd()
     const position = primitive.position || primitive.center
     if (!text || !isPoint(position)) {
       return null
@@ -412,13 +416,19 @@ export class DiagramRenderer {
       String(primitive.font || 'Arial')
         .replace(/[\u0000-\u001f]/g, ' ')
         .trim() || 'Arial'
-    const key = `${text}\u0000${color}\u0000${font}`
+    const horizontalAlign = String(
+      primitive.align || primitive.horizontalAlign || 'left'
+    ).toLowerCase()
+    const align = horizontalAlign === 'center' || horizontalAlign === 'middle'
+      ? 'center'
+      : horizontalAlign === 'right' ? 'right' : 'left'
+    const key = `${text}\u0000${color}\u0000${font}\u0000${align}`
     let cached = this.textCache.get(key)
     if (!cached) {
       const fontSize = 48
       const padding = 4
       const lineHeight = 58
-      const lines = text.split(/\r?\n/).slice(0, 24)
+      const lines = text.split('\n')
       const canvas = document.createElement('canvas')
       const ctx = canvas.getContext('2d')
       if (!ctx) {
@@ -453,9 +463,12 @@ export class DiagramRenderer {
       ctx.font = canvasFont
       ctx.textBaseline = 'alphabetic'
       ctx.fillStyle = color
-      lines.forEach((line, index) =>
-        ctx.fillText(line, padding, padding + ascent + lineHeight * index)
-      )
+      lines.forEach((line, index) => {
+        const remainingWidth = measuredWidth - metrics[index].width
+        const x = padding + (align === 'center' ? remainingWidth / 2
+          : align === 'right' ? remainingWidth : 0)
+        ctx.fillText(line, x, padding + ascent + lineHeight * index)
+      })
       const texture = new THREE.CanvasTexture(canvas)
       texture.colorSpace = THREE.SRGBColorSpace
       // A sheet can shrink 48px glyphs to just a few screen pixels. Without
@@ -485,9 +498,6 @@ export class DiagramRenderer {
     }
     const width = cached.widthRatio * height
     const textHeight = cached.heightRatio * height
-    const align = String(
-      primitive.align || primitive.horizontalAlign || 'left'
-    ).toLowerCase()
     const vertical = String(primitive.verticalAlign || 'bottom').toLowerCase()
     const padding = cached.paddingRatio * height
     const offsetX =
@@ -729,7 +739,10 @@ export class DiagramRenderer {
     }
     this.materials.forEach((material) => {
       if (material.isLineMaterial) {
-        material.linewidth = material.userData.lineWeight * this.scale
+        material.linewidth = Math.max(
+          MIN_LINE_WIDTH,
+          material.userData.lineWeight * this.scale
+        )
         material.resolution.set(this.width, this.height)
       }
     })

@@ -5,7 +5,56 @@ import { fileURLToPath } from 'node:url'
 
 const referenceFile = fileURLToPath(new URL('../public/samples/C01V04-VER.EX01.xml', import.meta.url))
 const browserErrors = new WeakMap()
-const trainingFile = relative => fileURLToPath(new URL('../../TrainingTestCases-master/' + relative, import.meta.url))
+const trainingFile = relative => {
+  const local = fileURLToPath(new URL('../dexpi_data/' + relative, import.meta.url))
+  return existsSync(local) ? local : fileURLToPath(new URL('../../TrainingTestCases-master/' + relative, import.meta.url))
+}
+
+test('DEXPI 1.2 HEX instrument and safety-valve textures contain centered, separate text rows', async ({ page }) => {
+  const file = fileURLToPath(new URL('../dexpi_data/dexpi 1.2/example pids/C01 the complete DEXPI PnID/C01V01-HEX.EX01.xml', import.meta.url))
+  await page.locator('input[type="file"]').setInputFiles(file)
+  await expect(page.locator('.document-title')).toContainText('C01V01-HEX.EX01.xml')
+  await expect(page.locator('.canvas-loading')).toHaveCount(0)
+  const readings = await page.evaluate(() => {
+    const { renderer } = document.querySelector('.app-shell').__vue__
+    return ['TICSA\r4750.03', 'SV 104.01\rP = 6.0 barg\rDN = 25/50'].map(text => {
+      const object = renderer.objects.find(o => o.userData.primitive.text === text)
+      const canvas = object.material.map.image
+      const ctx = canvas.getContext('2d')
+      const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+      const rows = []
+      let band = null
+      for (let y = 0; y < canvas.height; y++) {
+        let minX = Infinity, maxX = -Infinity
+        for (let x = 0; x < canvas.width; x++) {
+          if (pixels[(y * canvas.width + x) * 4 + 3] > 128) {
+            minX = Math.min(minX, x)
+            maxX = Math.max(maxX, x)
+          }
+        }
+        if (Number.isFinite(minX)) {
+          if (!band) rows.push(band = { minX, maxX, minY: y, maxY: y })
+          band.minX = Math.min(band.minX, minX)
+          band.maxX = Math.max(band.maxX, maxX)
+          band.maxY = y
+        } else band = null
+      }
+      // Glyph side bearings make ink centers differ even when advance boxes
+      // are centered. Correct with browser font metrics before comparing rows.
+      const bearingOffsets = text.split('\r').map(line => {
+        const metric = ctx.measureText(line)
+        return (metric.actualBoundingBoxRight - metric.actualBoundingBoxLeft - metric.width) / 2
+      })
+      return { text, rows, bearingOffsets, color: object.userData.primitive.color }
+    })
+  })
+  for (const reading of readings) {
+    expect(reading.rows).toHaveLength(reading.text.split('\r').length)
+    expect(reading.color).toBe('#000000')
+    const centers = reading.rows.map((row, index) => (row.minX + row.maxX) / 2 - reading.bearingOffsets[index])
+    expect(Math.max(...centers) - Math.min(...centers)).toBeLessThan(2)
+  }
+})
 
 test('C01 mirrored safety valve strokes match the reference SVG', async ({ page }) => {
   const sample = fileURLToPath(new URL('../dexpi_data/dexpi 1.3/example pids/C01 DEXPI Reference P&ID/C01V04-VER.EX01', import.meta.url))

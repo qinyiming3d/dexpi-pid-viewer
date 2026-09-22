@@ -36,7 +36,8 @@ test('source Presentation colours and both Proteus dashed line encodings reach r
   assert.equal(signal.material.isLineMaterial, true)
   assert.equal(signal.material.dashed, true)
   assert.equal(signal.material.worldUnits, false)
-  near(signal.material.linewidth, 0.2)
+  near(signal.material.linewidth, 0.5)
+  near(signal.material.userData.lineWeight, 0.2)
   // The C01 reference SVG specifies stroke-dasharray="1 1.4".
   near(signal.material.dashSize, 1)
   near(signal.material.gapSize, 1.4)
@@ -44,11 +45,68 @@ test('source Presentation colours and both Proteus dashed line encodings reach r
   const inMetres = renderer.lineMaterial({ lineType: 'Dashed', lineWeight: 0.00035 }, 'equipment')
   const inMillimetres = renderer.lineMaterial({ lineType: 'Dashed', lineWeight: 0.35 }, 'equipment')
   assert.equal(inMetres.dashed, true)
-  near(inMetres.linewidth * 1000, inMillimetres.linewidth)
+  near(inMetres.linewidth, 0.5)
+  near(inMillimetres.linewidth, 0.5)
+  near(inMetres.userData.lineWeight * 1000, inMillimetres.userData.lineWeight)
   near(inMetres.dashSize * 1000, inMillimetres.dashSize)
   near(inMetres.gapSize * 1000, inMillimetres.gapSize)
   assert.notEqual(inMetres, inMillimetres)
   assert.equal(renderer.lineMaterial({ lineType: 'Solid' }, 'equipment').dashed, false)
+})
+
+test('hairlines remain visible through camera zoom while retaining source weights and dash units', () => {
+  const renderer = rendererWithoutCanvas()
+  Object.assign(renderer, {
+    scale: 2000,
+    fitScale: 2000,
+    center: new THREE.Vector2(),
+    camera: new THREE.OrthographicCamera(),
+    selection: new THREE.Group(),
+    updateGrid() {},
+    updateSelectionBox() {},
+    onViewChange() {},
+    requestRender() {},
+  })
+  // The HEX C01 N7 immersion tube is only 0.01 mm wide in a metre drawing.
+  const primitive = { lineType: 'Dashed', lineWeight: 0.00001 }
+  const hairline = renderer.lineMaterial(primitive, 'equipment')
+  near(hairline.linewidth, 0.5)
+  near(hairline.userData.lineWeight, 0.00001)
+  near(primitive.lineWeight, 0.00001)
+  near(hairline.dashSize, 0.00006)
+  near(hairline.gapSize, 0.000032)
+  renderer.applyCamera()
+  near(hairline.linewidth, 0.5)
+
+  renderer.scale = 100000
+  renderer.applyCamera()
+  near(hairline.linewidth, 1)
+  near(hairline.userData.lineWeight, 0.00001)
+  near(hairline.dashSize, 0.00006)
+  near(hairline.gapSize, 0.000032)
+
+  // Materials first created at a large zoom use the same source-based width.
+  const enlarged = renderer.lineMaterial({ ...primitive, color: '#808000' }, 'equipment')
+  near(enlarged.linewidth, 1)
+  renderer.scale = 7000
+  renderer.applyCamera()
+  near(hairline.linewidth, 0.5)
+  near(enlarged.linewidth, 0.5)
+})
+
+test('ordinary 1.3 line widths still grow with zoom and equivalent source units agree', () => {
+  const inMm = rendererWithoutCanvas()
+  inMm.scale = 4
+  const inM = rendererWithoutCanvas()
+  inM.scale = 4000
+  for (const weight of [0.2, 0.35, 0.5]) {
+    const mmMaterial = inMm.lineMaterial({ lineWeight: weight, lineType: '2' }, 'piping')
+    const mMaterial = inM.lineMaterial({ lineWeight: weight / 1000, lineType: '2' }, 'piping')
+    near(mmMaterial.linewidth, weight * 4)
+    near(mMaterial.linewidth, mmMaterial.linewidth)
+    near(mMaterial.dashSize * 1000, mmMaterial.dashSize)
+    near(mMaterial.gapSize * 1000, mmMaterial.gapSize)
+  }
 })
 
 test('dashed closed shapes include the closing edge in line distances', () => {
